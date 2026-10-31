@@ -88,11 +88,19 @@ namespace JiMEOverlay
                     PartyNames = GetPartyNames(),
                     IsBattleMap = IsBattleMap(),
                 };
-                var newText = PromptRules.Apply(label.text, context);
-                if (newText != label.text)
+                var original = label.text;
+                var newText = PromptRules.Apply(original, context);
+                // Rules may only add text around the game's own; never show anything that alters the original wording.
+                if (newText == original)
                 {
-                    label.text = newText;
+                    return;
                 }
+                if (newText.IndexOf(original, StringComparison.Ordinal) < 0)
+                {
+                    _log.LogWarning("Prompt rules produced text that doesn't contain the original prompt unchanged; showing the original.");
+                    return;
+                }
+                label.text = newText;
             }
             catch (Exception e)
             {

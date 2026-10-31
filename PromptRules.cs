@@ -61,6 +61,7 @@ namespace JiMEOverlay
             "when.textMatches: a .NET regex matched against the popup text with formatting tags removed, ignoring case.",
             "when.battleMap: true for battle maps only, false for tile maps only.",
             "append / prepend: text added after / before the popup text, separated by a blank line. [b]bold[/b] and [i]italic[/i] work.",
+            "Rules only ever add text; the game's own prompt text is always shown unchanged.",
             "Placeholders: {1} inserts regex group 1 from textMatches, {1+1} adds 1 to it as a number, {hero} is the matched hero's name.",
         };
 

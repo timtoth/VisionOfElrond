@@ -79,7 +79,9 @@ A rule applies when every condition under `when` holds; leave a condition out to
   ignoring case. Backslashes are doubled in JSON.
 - **`battleMap`**: `true` for battle maps only, `false` for tile maps only.
 
-`append` adds text after the popup text, `prepend` before it, separated by a blank line. `[b]bold[/b]`
+Rules can only add text; there is no way to replace or remove the game's own wording, and the plugin
+refuses to show any result that doesn't contain the original prompt unchanged. `append` adds text
+after the popup text, `prepend` before it, separated by a blank line. `[b]bold[/b]`
 and `[i]italic[/i]` work. Placeholders: `{1}` inserts what `textMatches`' first `( )` group matched,
 `{1+1}` adds 1 to it as a number (`{1-1}` subtracts), and `{hero}` is the matched hero's name. Set
 `"enabled": false` at the top of the file to turn all rules off.
