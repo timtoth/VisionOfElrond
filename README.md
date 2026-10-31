@@ -42,9 +42,10 @@ Clicks on the panel don't pass through to the game underneath.
 ## Hero reminders
 
 The plugin can add a reminder line to the game's message popups when a certain hero is in the
-party. For example, with Aragorn in the party, a popup that says "Scout 2" gets this extra line:
-"Heroes adjacent to Aragorn: **Scout 3** instead." Only the text on screen changes; game rules and
-saves are not affected.
+party. For example, with Aragorn in the party, a rally phase popup that says "reset your deck and
+scout 2" gets this extra line: "Heroes adjacent to Aragorn: **Scout +1** (scout 3)." The number is
+worked out from the prompt, so "scout 4" shows "(scout 5)". Other Scout prompts, like battle setup,
+are left alone. Only the text on screen changes; game rules and saves are not affected.
 
 Rules are under `[Reminders]` in the config file. `Enabled` turns the feature on or off, and
 `Rule1` to `Rule8` each hold one rule in the form `HeroName|regex|text`:
@@ -53,14 +54,18 @@ Rules are under `[Reminders]` in the config file. `Enabled` turns the feature on
 - **regex**: a .NET regular expression matched against the popup text, with formatting tags
   removed. Everything between the first and last `|` counts as the regex, so `|` alternation works.
 - **text**: the line to add. NGUI tags like `[b]bold[/b]` and `[i]italic[/i]` work, and `\n` starts
-  a new line.
+  a new line. `{1}` inserts what the regex's first `( )` group matched, and `{1+1}` adds 1 to it
+  as a number (`{1-1}` subtracts).
 
 Matching ignores case. BepInEx writes backslashes doubled in the file, so the default rule looks
-like this (writing a single `\b` or `\d` works too):
+like this (writing single backslashes works too):
 
 ```
-Rule1 = Aragorn|\\bscouts? \\d|Heroes adjacent to Aragorn: [b]Scout 3[/b] instead.
+Rule1 = Aragorn|\\breset\\w* (?:your|their|his|her) decks?\\b[\\s\\S]{0,80}?\\bscouts? (\\d+)|Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1}).
 ```
+
+If your config still has the 0.5.0 default (which matched every Scout prompt), it is updated to
+this one automatically. A rule you've edited is never changed.
 
 The game only applies config changes made while it is running if you use a config manager plugin;
 otherwise edit the file and restart the game.

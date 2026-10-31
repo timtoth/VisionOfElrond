@@ -23,6 +23,14 @@ namespace JiMEOverlay
     {
         public const int RuleSlots = 8;
 
+        // Aragorn's rally phase bonus: when the app says to reset your deck and scout N, heroes adjacent to him scout one more.
+        private const string DefaultRule1 = @"Aragorn|\breset\w* (?:your|their|his|her) decks?\b[\s\S]{0,80}?\bscouts? (\d+)|Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1}).";
+        // Shipped in 0.5.0; it matched every Scout prompt, including setup. Replaced if the user never edited it.
+        private const string OldDefaultRule1 = @"Aragorn|\bscouts? \d|Heroes adjacent to Aragorn: [b]Scout 3[/b] instead.";
+
+        // "{1}" inserts regex group 1; "{1+1}" or "{1-2}" adds to it as a number.
+        private static readonly Regex Placeholder = new Regex(@"\{(\d+)(?:([+-])(\d+))?\}", RegexOptions.Compiled);
+
         // NGUI markup such as [b], [/i], [-] or [ff0000]; stripped before matching so "[b]scout 2[/b]" matches.
         private static readonly Regex MarkupTag = new Regex(@"\[/?[a-zA-Z0-9-]{0,8}\]", RegexOptions.Compiled);
 
@@ -44,9 +52,14 @@ namespace JiMEOverlay
             _enabled = config.Bind("Reminders", "Enabled", true, "Append hero reminders to the game's message popups.");
             for (int i = 1; i <= RuleSlots; i++)
             {
-                var defaultValue = i == 1 ? @"Aragorn|\bscouts? \d|Heroes adjacent to Aragorn: [b]Scout 3[/b] instead." : "";
+                var defaultValue = i == 1 ? DefaultRule1 : "";
                 var entry = config.Bind("Reminders", $"Rule{i}", defaultValue,
-                    "Format: HeroName|regex|text to append. Applies when a party hero's name contains HeroName and the popup text matches the regex (both case-insensitive). The regex sits between the first and last |. NGUI [b] and [i] tags work in the text. Leave empty to disable.");
+                    "Format: HeroName|regex|text to append. Applies when a party hero's name contains HeroName and the popup text matches the regex (both case-insensitive). The regex sits between the first and last |. NGUI [b] and [i] tags work in the text; {1} inserts regex group 1 and {1+1} adds 1 to it. Leave empty to disable.");
+                if (i == 1 && RestoreEscapes(entry.Value) == OldDefaultRule1)
+                {
+                    entry.Value = DefaultRule1;
+                    log.LogInfo("Reminders Rule1: updated the old Aragorn default to the deck-reset rule.");
+                }
                 entry.SettingChanged += (s, e) => _rules = null;
                 _ruleEntries.Add(entry);
             }
@@ -127,14 +140,45 @@ namespace JiMEOverlay
             var result = text;
             foreach (var rule in rules)
             {
-                // Skip if already shown, so a repeated or re-localized popup never gets it twice.
-                if (result.Contains(rule.Text) || !rule.Pattern.IsMatch(plain) || !party.Exists(n => n.IndexOf(rule.HeroName, StringComparison.OrdinalIgnoreCase) >= 0))
+                if (!party.Exists(n => n.IndexOf(rule.HeroName, StringComparison.OrdinalIgnoreCase) >= 0))
                 {
                     continue;
                 }
-                result += "\n\n" + rule.Text;
+                var match = rule.Pattern.Match(plain);
+                if (!match.Success)
+                {
+                    continue;
+                }
+                var reminder = ExpandPlaceholders(rule.Text, match);
+                // Skip if already shown, so a repeated or re-localized popup never gets it twice.
+                if (!result.Contains(reminder))
+                {
+                    result += "\n\n" + reminder;
+                }
             }
             return result;
+        }
+
+        private static string ExpandPlaceholders(string text, Match match)
+        {
+            return Placeholder.Replace(text, p =>
+            {
+                var group = match.Groups[int.Parse(p.Groups[1].Value)];
+                if (!group.Success)
+                {
+                    return p.Value;
+                }
+                if (!p.Groups[2].Success)
+                {
+                    return group.Value;
+                }
+                if (!int.TryParse(group.Value, out var number))
+                {
+                    return p.Value;
+                }
+                var offset = int.Parse(p.Groups[3].Value);
+                return (p.Groups[2].Value == "+" ? number + offset : number - offset).ToString();
+            });
         }
 
         private static List<string> GetPartyNames()

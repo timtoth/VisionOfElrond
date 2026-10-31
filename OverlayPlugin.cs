@@ -13,7 +13,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.5.0";
+        public const string PluginVersion = "0.5.1";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
