@@ -13,7 +13,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.2.0";
+        public const string PluginVersion = "0.3.0";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -129,6 +129,15 @@ namespace JiMEOverlay
             if (snap.ThreatThresholds.Count > 0)
             {
                 GUILayout.Label($"Next threat events at: {string.Join(", ", snap.ThreatThresholds)}");
+            }
+
+            GUILayout.Space(4f);
+            GUILayout.Label(snap.IsInLastStand ? "<b>Heroes</b> · <color=#ff6060>Last stand!</color>" : "<b>Heroes</b>");
+            foreach (var hero in snap.Heroes)
+            {
+                var status = hero.IsDefeated ? " <color=#ff6060>[Defeated]</color>" : "";
+                GUILayout.Label($"{hero.Name}{status}");
+                GUILayout.Label($"    Corruption {hero.Corruption} · Last stand difficulty {hero.LastStandDifficulty}");
             }
 
             GUILayout.Space(4f);

@@ -17,6 +17,14 @@ namespace JiMEOverlay
         public bool IsElite;
     }
 
+    public class HeroRow
+    {
+        public string Name;
+        public int Corruption;
+        public bool IsDefeated;
+        public int LastStandDifficulty;
+    }
+
     // Read-only snapshot of the live game, rebuilt on a timer so OnGUI never touches game objects.
     public class GameSnapshot
     {
@@ -28,8 +36,10 @@ namespace JiMEOverlay
         public int Threat;
         public int ThreatMax;
         public bool IsDarkness;
+        public bool IsInLastStand;
         public readonly List<int> ThreatThresholds = new List<int>();
         public readonly List<EnemyRow> Enemies = new List<EnemyRow>();
+        public readonly List<HeroRow> Heroes = new List<HeroRow>();
 
         public static GameSnapshot Capture()
         {
@@ -55,6 +65,7 @@ namespace JiMEOverlay
             snap.Threat = vars.AdventureThreat;
             snap.ThreatMax = adventure.ThreatMax;
             snap.IsDarkness = vars.IsDarkness;
+            snap.IsInLastStand = controller.IsInLastStand;
 
             if (adventure.ActiveThreatEvents != null)
             {
@@ -77,6 +88,25 @@ namespace JiMEOverlay
                         continue;
                     }
                     snap.Enemies.Add(ReadEnemy(group));
+                }
+            }
+
+            var players = SingletonBehaviour<GameData>.IsInitialized ? SingletonBehaviour<GameData>.Instance.Players : null;
+            if (players != null)
+            {
+                foreach (var hero in players)
+                {
+                    if (hero == null || hero.Model == null)
+                    {
+                        continue;
+                    }
+                    snap.Heroes.Add(new HeroRow
+                    {
+                        Name = Localize(hero.Model.NameKey),
+                        Corruption = hero.Corruption,
+                        IsDefeated = hero.Status == HeroStatus.Defeated,
+                        LastStandDifficulty = hero.LastStandDifficulty,
+                    });
                 }
             }
 
