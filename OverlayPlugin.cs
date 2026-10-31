@@ -13,7 +13,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.3.0";
+        public const string PluginVersion = "0.4.0";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -22,8 +22,11 @@ namespace JiMEOverlay
         private ConfigEntry<bool> _visibleOnStart;
         private ConfigEntry<float> _windowX;
         private ConfigEntry<float> _windowY;
+        private ConfigEntry<string> _extraSetupItems;
 
         private bool _visible;
+        private bool _blockingGameInput;
+        private readonly SetupChecklist _setup = new SetupChecklist();
         private Rect _windowRect;
         private float _sessionStart;
 
@@ -37,6 +40,7 @@ namespace JiMEOverlay
             _visibleOnStart = Config.Bind("General", "VisibleOnStart", true, "Show the overlay when the game launches.");
             _windowX = Config.Bind("Window", "X", 20f, "Overlay left position in pixels.");
             _windowY = Config.Bind("Window", "Y", 20f, "Overlay top position in pixels.");
+            _extraSetupItems = Config.Bind("Setup", "ExtraItems", "", "Extra Round 0 checklist items, separated by |. Example: Set out dice|Deal damage and fear decks");
 
             _visible = _visibleOnStart.Value;
             _windowRect = new Rect(_windowX.Value, _windowY.Value, 300f, 120f);
@@ -57,6 +61,28 @@ namespace JiMEOverlay
                 _nextRefresh = Time.realtimeSinceStartup + RefreshInterval;
                 RefreshSnapshot();
             }
+
+            UpdateInputBlocking();
+        }
+
+        // While the mouse is over the panel, stop NGUI from also clicking the game (or dragging the map) underneath.
+        private void UpdateInputBlocking()
+        {
+            var mouse = Input.mousePosition;
+            var over = _visible && _windowRect.Contains(new Vector2(mouse.x, Screen.height - mouse.y));
+            if (over != _blockingGameInput)
+            {
+                _blockingGameInput = over;
+                UICamera.ignoreAllEvents = over;
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (_blockingGameInput)
+            {
+                UICamera.ignoreAllEvents = false;
+            }
         }
 
         private void RefreshSnapshot()
@@ -64,6 +90,10 @@ namespace JiMEOverlay
             try
             {
                 _snapshot = GameSnapshot.Capture();
+                if (_snapshot.InAdventure)
+                {
+                    _setup.Sync(_snapshot, _extraSetupItems.Value);
+                }
             }
             catch (Exception e)
             {
@@ -113,12 +143,32 @@ namespace JiMEOverlay
             GUI.DragWindow();
         }
 
-        private static void DrawAdventure(GameSnapshot snap)
+        private void DrawAdventure(GameSnapshot snap)
         {
             GUILayout.Label($"<b>{snap.AdventureName}</b>{(snap.IsBattleMap ? "  (battle map)" : "")}");
 
-            var phase = snap.Phase == GamePhases.HeroPhase ? "Hero phase" : "Shadow phase";
-            GUILayout.Label($"Round {snap.Round} · {phase}");
+            // Round 0 is the overlay's own setup phase: shown at the start of an adventure until the checklist is done.
+            var inSetup = snap.Round <= 1 && !_setup.IsComplete;
+            if (inSetup)
+            {
+                GUILayout.Label("<b>Round 0 · Setup</b>");
+                DrawSetupChecklist();
+            }
+            else
+            {
+                var phase = snap.Phase == GamePhases.HeroPhase ? "Hero phase" : "Shadow phase";
+                GUILayout.BeginHorizontal();
+                GUILayout.Label($"Round {snap.Round} · {phase}");
+                if (snap.Round <= 1 && GUILayout.Button("Setup list", GUILayout.ExpandWidth(false)))
+                {
+                    _setup.IsDismissed = false;
+                    foreach (var item in _setup.Items)
+                    {
+                        _setup.SetChecked(item, false);
+                    }
+                }
+                GUILayout.EndHorizontal();
+            }
 
             var threat = snap.ThreatMax > 0 ? $"Threat {snap.Threat} / {snap.ThreatMax}" : $"Threat {snap.Threat}";
             if (snap.IsDarkness)
@@ -136,7 +186,9 @@ namespace JiMEOverlay
             foreach (var hero in snap.Heroes)
             {
                 var status = hero.IsDefeated ? " <color=#ff6060>[Defeated]</color>" : "";
-                GUILayout.Label($"{hero.Name}{status}");
+                var titles = hero.Titles.Count > 0 ? ", " + string.Join(", ", hero.Titles) : "";
+                var role = string.IsNullOrEmpty(hero.Role) ? "" : $" ({hero.Role})";
+                GUILayout.Label($"{hero.Name}{titles}{role}{status}");
                 GUILayout.Label($"    Corruption {hero.Corruption} · Last stand difficulty {hero.LastStandDifficulty}");
             }
 
@@ -151,6 +203,23 @@ namespace JiMEOverlay
                 var tags = (enemy.IsElite ? " [Elite]" : "") + (enemy.IsExhausted ? " [Exhausted]" : "");
                 GUILayout.Label($"{enemy.Name} ×{enemy.UnitsRemaining}/{enemy.UnitStartCount}{tags}");
                 GUILayout.Label($"    HP {enemy.Health}/{enemy.TotalHealth} · Armor {enemy.Armor} · Sorcery {enemy.Sorcery}");
+            }
+        }
+
+        private void DrawSetupChecklist()
+        {
+            foreach (var item in _setup.Items)
+            {
+                var isChecked = _setup.IsChecked(item);
+                var newValue = GUILayout.Toggle(isChecked, " " + item.Text);
+                if (newValue != isChecked)
+                {
+                    _setup.SetChecked(item, newValue);
+                }
+            }
+            if (GUILayout.Button("Setup done"))
+            {
+                _setup.IsDismissed = true;
             }
         }
     }

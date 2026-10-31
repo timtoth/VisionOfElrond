@@ -20,6 +20,8 @@ namespace JiMEOverlay
     public class HeroRow
     {
         public string Name;
+        public string Role;
+        public readonly List<string> Titles = new List<string>();
         public int Corruption;
         public bool IsDefeated;
         public int LastStandDifficulty;
@@ -29,6 +31,8 @@ namespace JiMEOverlay
     public class GameSnapshot
     {
         public bool InAdventure;
+        // Identifies this adventure in this save slot, so per-adventure overlay state can reset.
+        public string AdventureKey;
         public string AdventureName;
         public bool IsBattleMap;
         public int Round;
@@ -58,6 +62,8 @@ namespace JiMEOverlay
 
             var vars = GameData.GlobalVariables;
             snap.InAdventure = true;
+            var savedGame = GameData.Game != null ? GameData.Game.SerializedGame : null;
+            snap.AdventureKey = $"{(savedGame != null ? savedGame.SlotGUID : "")}:{adventure.Model.Id}";
             snap.AdventureName = Localize(adventure.Model.NameKey);
             snap.IsBattleMap = adventure.Type == AdventureTypes.Battleboard;
             snap.Phase = controller.CurrentPhase;
@@ -91,7 +97,8 @@ namespace JiMEOverlay
                 }
             }
 
-            var players = SingletonBehaviour<GameData>.IsInitialized ? SingletonBehaviour<GameData>.Instance.Players : null;
+            var gameData = SingletonBehaviour<GameData>.IsInitialized ? SingletonBehaviour<GameData>.Instance : null;
+            var players = gameData != null ? gameData.Players : null;
             if (players != null)
             {
                 foreach (var hero in players)
@@ -100,17 +107,39 @@ namespace JiMEOverlay
                     {
                         continue;
                     }
-                    snap.Heroes.Add(new HeroRow
-                    {
-                        Name = Localize(hero.Model.NameKey),
-                        Corruption = hero.Corruption,
-                        IsDefeated = hero.Status == HeroStatus.Defeated,
-                        LastStandDifficulty = hero.LastStandDifficulty,
-                    });
+                    snap.Heroes.Add(ReadHero(gameData, hero));
                 }
             }
 
             return snap;
+        }
+
+        private static HeroRow ReadHero(GameData gameData, Hero hero)
+        {
+            var row = new HeroRow
+            {
+                Name = Localize(hero.Model.NameKey),
+                Corruption = hero.Corruption,
+                IsDefeated = hero.Status == HeroStatus.Defeated,
+                LastStandDifficulty = hero.LastStandDifficulty,
+            };
+
+            var role = UserCollectionManager.GetRole(gameData.GetHeroRoleId(hero.Index), false);
+            row.Role = role != null ? Localize(role.NameKey) : "";
+
+            var titleIds = gameData.GetUnlockedTitleIds(hero.Index);
+            if (titleIds != null)
+            {
+                foreach (var titleId in titleIds)
+                {
+                    var title = UserCollectionManager.GetTitle(titleId, false);
+                    if (title != null)
+                    {
+                        row.Titles.Add(Localize(title.NameKey));
+                    }
+                }
+            }
+            return row;
         }
 
         private static EnemyRow ReadEnemy(EnemyGroup group)

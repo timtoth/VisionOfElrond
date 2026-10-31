@@ -9,10 +9,16 @@ It only reads game state. It doesn't change game files, assets, or your saves.
 ## What it shows
 
 - Adventure name, and whether you're on a battle map
+- **Round 0 setup checklist** at the start of each adventure: role cards, deck building, re-adding
+  each hero's titles (listed by name), item cards, shuffling, and placing the starting board. Tick
+  items off or press "Setup done"; the checklist resets for each new adventure
 - Round and phase (hero / shadow)
 - Threat (current / max), darkness, and the thresholds of upcoming threat events
-- Heroes: corruption, defeated status, last stand difficulty, and a last stand alert
+- Heroes with their earned titles and role, e.g. "Aragorn, the Unfallen (Captain)", plus corruption,
+  defeated status, last stand difficulty, and a last stand alert
 - Enemies in play: units remaining, HP, armor, sorcery, elite and exhausted status
+
+Clicks on the panel don't pass through to the game underneath.
 
 ## Install
 
@@ -28,8 +34,9 @@ It only reads game state. It doesn't change game files, assets, or your saves.
 
 - **F8** shows or hides the panel.
 - Drag the panel by its title bar; the position is remembered.
-- Settings (toggle key, visible on launch, position) are in
-  `BepInEx\config\com.timto.jimeoverlay.cfg`.
+- Settings (toggle key, visible on launch, position, extra setup checklist items) are in
+  `BepInEx\config\com.timto.jimeoverlay.cfg`. Add your own checklist steps under `[Setup]`
+  `ExtraItems`, separated by `|`.
 - If something isn't showing, check `BepInEx\LogOutput.log`.
 
 ## Build from source
