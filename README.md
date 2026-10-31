@@ -39,6 +39,32 @@ Clicks on the panel don't pass through to the game underneath.
   `ExtraItems`, separated by `|`.
 - If something isn't showing, check `BepInEx\LogOutput.log`.
 
+## Hero reminders
+
+The plugin can add a reminder line to the game's message popups when a certain hero is in the
+party. For example, with Aragorn in the party, a popup that says "Scout 2" gets this extra line:
+"Heroes adjacent to Aragorn: **Scout 3** instead." Only the text on screen changes; game rules and
+saves are not affected.
+
+Rules are under `[Reminders]` in the config file. `Enabled` turns the feature on or off, and
+`Rule1` to `Rule8` each hold one rule in the form `HeroName|regex|text`:
+
+- **HeroName**: the rule applies when any party hero's name contains this text.
+- **regex**: a .NET regular expression matched against the popup text, with formatting tags
+  removed. Everything between the first and last `|` counts as the regex, so `|` alternation works.
+- **text**: the line to add. NGUI tags like `[b]bold[/b]` and `[i]italic[/i]` work, and `\n` starts
+  a new line.
+
+Matching ignores case. BepInEx writes backslashes doubled in the file, so the default rule looks
+like this (writing a single `\b` or `\d` works too):
+
+```
+Rule1 = Aragorn|\\bscouts? \\d|Heroes adjacent to Aragorn: [b]Scout 3[/b] instead.
+```
+
+The game only applies config changes made while it is running if you use a config manager plugin;
+otherwise edit the file and restart the game.
+
 ## Build from source
 
 Requires the .NET SDK (any recent version) and the game installed, since the project references the

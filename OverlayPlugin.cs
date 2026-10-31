@@ -13,19 +13,24 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.4.0";
+        public const string PluginVersion = "0.5.0";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
+        private const float FadeSpeed = 4f; // opacity change per second
 
         private ConfigEntry<KeyboardShortcut> _toggleKey;
         private ConfigEntry<bool> _visibleOnStart;
         private ConfigEntry<float> _windowX;
         private ConfigEntry<float> _windowY;
         private ConfigEntry<string> _extraSetupItems;
+        private ConfigEntry<float> _idleOpacity;
+        private ConfigEntry<float> _hoverOpacity;
 
         private bool _visible;
         private bool _blockingGameInput;
+        private float _opacity = 1f;
+        private Texture2D _backdrop;
         private readonly SetupChecklist _setup = new SetupChecklist();
         private Rect _windowRect;
         private float _sessionStart;
@@ -41,6 +46,14 @@ namespace JiMEOverlay
             _windowX = Config.Bind("Window", "X", 20f, "Overlay left position in pixels.");
             _windowY = Config.Bind("Window", "Y", 20f, "Overlay top position in pixels.");
             _extraSetupItems = Config.Bind("Setup", "ExtraItems", "", "Extra Round 0 checklist items, separated by |. Example: Set out dice|Deal damage and fear decks");
+            _idleOpacity = Config.Bind("Window", "IdleOpacity", 0.6f, new ConfigDescription("Panel opacity when the mouse is elsewhere.", new AcceptableValueRange<float>(0.1f, 1f)));
+            _hoverOpacity = Config.Bind("Window", "HoverOpacity", 1f, new ConfigDescription("Panel opacity while the mouse is over it.", new AcceptableValueRange<float>(0.1f, 1f)));
+
+            _backdrop = new Texture2D(1, 1);
+            _backdrop.SetPixel(0, 0, new Color(0.06f, 0.06f, 0.06f, 1f));
+            _backdrop.Apply();
+
+            PromptReminders.Init(Config, Logger, PluginGuid);
 
             _visible = _visibleOnStart.Value;
             _windowRect = new Rect(_windowX.Value, _windowY.Value, 300f, 120f);
@@ -63,6 +76,10 @@ namespace JiMEOverlay
             }
 
             UpdateInputBlocking();
+
+            // Fade toward solid while hovered, see-through otherwise.
+            var targetOpacity = _blockingGameInput ? _hoverOpacity.Value : _idleOpacity.Value;
+            _opacity = Mathf.MoveTowards(_opacity, targetOpacity, FadeSpeed * Time.unscaledDeltaTime);
         }
 
         // While the mouse is over the panel, stop NGUI from also clicking the game (or dragging the map) underneath.
@@ -114,7 +131,14 @@ namespace JiMEOverlay
                 return;
             }
 
+            // The default window skin is partly transparent, so a dark backdrop underneath lets hover read as solid.
+            var oldColor = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, _opacity * 0.85f);
+            GUI.DrawTexture(_windowRect, _backdrop);
+            GUI.color = new Color(1f, 1f, 1f, _opacity);
+
             var newRect = GUILayout.Window(WindowId, _windowRect, DrawWindow, PluginName, GUILayout.Width(300f));
+            GUI.color = oldColor;
             if (newRect.position != _windowRect.position)
             {
                 _windowX.Value = newRect.x;

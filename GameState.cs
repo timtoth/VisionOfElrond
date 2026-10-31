@@ -168,7 +168,7 @@ namespace JiMEOverlay
             return row;
         }
 
-        private static string Localize(string key)
+        internal static string Localize(string key)
         {
             if (string.IsNullOrEmpty(key))
             {
