@@ -39,36 +39,53 @@ Clicks on the panel don't pass through to the game underneath.
   `ExtraItems`, separated by `|`.
 - If something isn't showing, check `BepInEx\LogOutput.log`.
 
-## Hero reminders
+## Prompt rules
 
-The plugin can add a reminder line to the game's message popups when a certain hero is in the
-party. For example, with Aragorn in the party, a rally phase popup that says "reset your deck and
-scout 2" gets this extra line: "Heroes adjacent to Aragorn: **Scout +1** (scout 3)." The number is
-worked out from the prompt, so "scout 4" shows "(scout 5)". Other Scout prompts, like battle setup,
-are left alone. Only the text on screen changes; game rules and saves are not affected.
+The plugin can add text before or after the game's message popups. For example, with Aragorn in the
+party, a rally phase popup that says "reset your deck and scout 2" gets this extra line: "Heroes
+adjacent to Aragorn: **Scout +1** (scout 3)." Only the text on screen changes; game rules and saves
+are not affected.
 
-Rules are under `[Reminders]` in the config file. `Enabled` turns the feature on or off, and
-`Rule1` to `Rule8` each hold one rule in the form `HeroName|regex|text`:
+Two files in `BepInEx\config\JiMEOverlay\` drive this:
 
-- **HeroName**: the rule applies when any party hero's name contains this text.
-- **regex**: a .NET regular expression matched against the popup text, with formatting tags
-  removed. Everything between the first and last `|` counts as the regex, so `|` alternation works.
-- **text**: the line to add. NGUI tags like `[b]bold[/b]` and `[i]italic[/i]` work, and `\n` starts
-  a new line. `{1}` inserts what the regex's first `( )` group matched, and `{1+1}` adds 1 to it
-  as a number (`{1-1}` subtracts).
+- **`prompts.json`**: every text the game has loaded, by localization key, in your game's language.
+  The plugin writes it while the game runs and adds new keys as the game loads more text. Use it to
+  find the key or exact wording of a prompt. Don't edit it; it gets overwritten.
+- **`prompt-rules.json`**: your rules. Edit it any time, even while the game is running; changes
+  apply to the next popup. If the file has a mistake, the previous rules stay in effect and
+  `BepInEx\LogOutput.log` says what's wrong.
 
-Matching ignores case. BepInEx writes backslashes doubled in the file, so the default rule looks
-like this (writing single backslashes works too):
+Each rule looks like this:
 
+```json
+{
+  "id": "aragorn-rally-scout",
+  "description": "Aragorn: in the rally phase, heroes adjacent to him scout 1 more than the app says.",
+  "enabled": true,
+  "when": {
+    "heroesInParty": ["Aragorn"],
+    "textMatches": "\\breset\\w* (?:your|their|his|her) decks?\\b[\\s\\S]{0,80}?\\bscouts? (\\d+)"
+  },
+  "append": "Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1})."
+}
 ```
-Rule1 = Aragorn|\\breset\\w* (?:your|their|his|her) decks?\\b[\\s\\S]{0,80}?\\bscouts? (\\d+)|Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1}).
-```
 
-If your config still has the 0.5.0 default (which matched every Scout prompt), it is updated to
-this one automatically. A rule you've edited is never changed.
+A rule applies when every condition under `when` holds; leave a condition out to skip it:
 
-The game only applies config changes made while it is running if you use a config manager plugin;
-otherwise edit the file and restart the game.
+- **`heroesInParty`**: any of these heroes is in the party (name contains, ignoring case).
+- **`keys`**: the popup uses any of these localization keys from `prompts.json`; `*` is a wildcard,
+  e.g. `"UI_RALLY_*"`. This is the most reliable way to target one specific prompt.
+- **`textMatches`**: a .NET regex matched against the popup text with formatting tags removed,
+  ignoring case. Backslashes are doubled in JSON.
+- **`battleMap`**: `true` for battle maps only, `false` for tile maps only.
+
+`append` adds text after the popup text, `prepend` before it, separated by a blank line. `[b]bold[/b]`
+and `[i]italic[/i]` work. Placeholders: `{1}` inserts what `textMatches`' first `( )` group matched,
+`{1+1}` adds 1 to it as a number (`{1-1}` subtracts), and `{hero}` is the matched hero's name. Set
+`"enabled": false` at the top of the file to turn all rules off.
+
+Rules from the 0.5.x `[Reminders]` config section are moved into `prompt-rules.json` automatically
+the first time 0.6 runs.
 
 ## Build from source
 
@@ -91,4 +108,5 @@ folder from the game folder, or run **Verify integrity of game files** in Steam.
 ## Disclaimer
 
 Fan-made and unofficial. Not affiliated with or endorsed by Fantasy Flight Games or Asmodee. No game
-code or assets are included in this repository.
+code, text or assets are included in this repository; `prompts.json` is generated on your own machine
+from your copy of the game and should not be shared.

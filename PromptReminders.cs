@@ -9,60 +9,34 @@ using HarmonyLib;
 
 namespace JiMEOverlay
 {
-    // A reminder appended to a message popup when a hero is in the party and the text matches.
-    public class ReminderRule
-    {
-        public string HeroName;
-        public Regex Pattern;
-        public string Text;
-    }
-
-    // Appends hero-specific reminders to the game's message popups, e.g. Aragorn's Scout bonus.
+    // Hooks the game's message popups and runs their text through PromptRules (prompt-rules.json).
     // Display only: the label text is changed after the game has resolved it; packets and game logic are untouched.
     public static class PromptReminders
     {
-        public const int RuleSlots = 8;
-
-        // Aragorn's rally phase bonus: when the app says to reset your deck and scout N, heroes adjacent to him scout one more.
-        private const string DefaultRule1 = @"Aragorn|\breset\w* (?:your|their|his|her) decks?\b[\s\S]{0,80}?\bscouts? (\d+)|Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1}).";
-        // Shipped in 0.5.0; it matched every Scout prompt, including setup. Replaced if the user never edited it.
-        private const string OldDefaultRule1 = @"Aragorn|\bscouts? \d|Heroes adjacent to Aragorn: [b]Scout 3[/b] instead.";
-
-        // "{1}" inserts regex group 1; "{1+1}" or "{1-2}" adds to it as a number.
-        private static readonly Regex Placeholder = new Regex(@"\{(\d+)(?:([+-])(\d+))?\}", RegexOptions.Compiled);
-
         // NGUI markup such as [b], [/i], [-] or [ff0000]; stripped before matching so "[b]scout 2[/b]" matches.
         private static readonly Regex MarkupTag = new Regex(@"\[/?[a-zA-Z0-9-]{0,8}\]", RegexOptions.Compiled);
 
+        // Config rule slots used by 0.5.x; migrated into prompt-rules.json and then removed from the .cfg.
+        private const int LegacyRuleSlots = 8;
+        private static readonly string[] LegacyDefaults =
+        {
+            @"Aragorn|\bscouts? \d|Heroes adjacent to Aragorn: [b]Scout 3[/b] instead.",
+            @"Aragorn|\breset\w* (?:your|their|his|her) decks?\b[\s\S]{0,80}?\bscouts? (\d+)|Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1}).",
+        };
+
         private static ManualLogSource _log;
-        private static ConfigEntry<bool> _enabled;
-        private static readonly List<ConfigEntry<string>> _ruleEntries = new List<ConfigEntry<string>>();
-        private static List<ReminderRule> _rules;
         private static string _lastError;
 
-        // The popup currently inside InitializePopup; only its own label gets reminders.
+        // The popup currently inside InitializePopup; only its own label gets rules applied.
         private static MessagePopup _initializingPopup;
 
         private static readonly AccessTools.FieldRef<MessagePopup, UILocalizationPacket> LocalizedTextRef =
             AccessTools.FieldRefAccess<MessagePopup, UILocalizationPacket>("_localizedText");
 
-        public static void Init(ConfigFile config, ManualLogSource log, string harmonyId)
+        public static void Init(ConfigFile config, ManualLogSource log, string harmonyId, string dataDir)
         {
             _log = log;
-            _enabled = config.Bind("Reminders", "Enabled", true, "Append hero reminders to the game's message popups.");
-            for (int i = 1; i <= RuleSlots; i++)
-            {
-                var defaultValue = i == 1 ? DefaultRule1 : "";
-                var entry = config.Bind("Reminders", $"Rule{i}", defaultValue,
-                    "Format: HeroName|regex|text to append. Applies when a party hero's name contains HeroName and the popup text matches the regex (both case-insensitive). The regex sits between the first and last |. NGUI [b] and [i] tags work in the text; {1} inserts regex group 1 and {1+1} adds 1 to it. Leave empty to disable.");
-                if (i == 1 && RestoreEscapes(entry.Value) == OldDefaultRule1)
-                {
-                    entry.Value = DefaultRule1;
-                    log.LogInfo("Reminders Rule1: updated the old Aragorn default to the deck-reset rule.");
-                }
-                entry.SettingChanged += (s, e) => _rules = null;
-                _ruleEntries.Add(entry);
-            }
+            PromptRules.Init(log, dataDir, MigrateLegacyConfig(config));
 
             try
             {
@@ -75,7 +49,7 @@ namespace JiMEOverlay
             }
             catch (Exception e)
             {
-                log.LogWarning($"Prompt reminders disabled; could not patch message popups: {e}");
+                log.LogWarning($"Prompt rules disabled; could not patch message popups: {e}");
             }
         }
 
@@ -92,12 +66,12 @@ namespace JiMEOverlay
         }
 
         // Runs after the popup's label has its resolved text, but before the popup sizes and places itself.
-        private static void UpdateLocalizationPostfix(UILocalizationPacket __instance)
+        private static void UpdateLocalizationPostfix(UILocalizationPacket __instance, LocalizationPacket __0)
         {
             try
             {
                 var popup = _initializingPopup;
-                if (popup == null || !_enabled.Value || LocalizedTextRef(popup) != __instance)
+                if (popup == null || LocalizedTextRef(popup) != __instance)
                 {
                     return;
                 }
@@ -106,7 +80,15 @@ namespace JiMEOverlay
                 {
                     return;
                 }
-                var newText = AppendReminders(label.text);
+
+                var context = new PromptContext
+                {
+                    Keys = GetKeys(__0),
+                    PlainText = MarkupTag.Replace(label.text, ""),
+                    PartyNames = GetPartyNames(),
+                    IsBattleMap = IsBattleMap(),
+                };
+                var newText = PromptRules.Apply(label.text, context);
                 if (newText != label.text)
                 {
                     label.text = newText;
@@ -118,67 +100,34 @@ namespace JiMEOverlay
                 if (e.Message != _lastError)
                 {
                     _lastError = e.Message;
-                    _log.LogWarning($"Prompt reminder failed: {e}");
+                    _log.LogWarning($"Prompt rule failed: {e}");
                 }
             }
         }
 
-        private static string AppendReminders(string text)
+        // The packet's own key plus the keys of any localized inserts (e.g. a title name inside an award message).
+        private static List<string> GetKeys(LocalizationPacket packet)
         {
-            var rules = GetRules();
-            if (rules.Count == 0)
+            var keys = new List<string>();
+            if (packet == null)
             {
-                return text;
+                return keys;
             }
-            var party = GetPartyNames();
-            if (party.Count == 0)
+            if (!string.IsNullOrEmpty(packet.Key))
             {
-                return text;
+                keys.Add(packet.Key);
             }
-
-            var plain = MarkupTag.Replace(text, "");
-            var result = text;
-            foreach (var rule in rules)
+            if (packet is IA_LocalizationPacket ia && ia.Inserts != null)
             {
-                if (!party.Exists(n => n.IndexOf(rule.HeroName, StringComparison.OrdinalIgnoreCase) >= 0))
+                foreach (var insert in ia.Inserts)
                 {
-                    continue;
-                }
-                var match = rule.Pattern.Match(plain);
-                if (!match.Success)
-                {
-                    continue;
-                }
-                var reminder = ExpandPlaceholders(rule.Text, match);
-                // Skip if already shown, so a repeated or re-localized popup never gets it twice.
-                if (!result.Contains(reminder))
-                {
-                    result += "\n\n" + reminder;
+                    if (insert != null && insert.IsUsed && insert.LocalizationKey != null && !string.IsNullOrEmpty(insert.LocalizationKey.Key))
+                    {
+                        keys.Add(insert.LocalizationKey.Key);
+                    }
                 }
             }
-            return result;
-        }
-
-        private static string ExpandPlaceholders(string text, Match match)
-        {
-            return Placeholder.Replace(text, p =>
-            {
-                var group = match.Groups[int.Parse(p.Groups[1].Value)];
-                if (!group.Success)
-                {
-                    return p.Value;
-                }
-                if (!p.Groups[2].Success)
-                {
-                    return group.Value;
-                }
-                if (!int.TryParse(group.Value, out var number))
-                {
-                    return p.Value;
-                }
-                var offset = int.Parse(p.Groups[3].Value);
-                return (p.Groups[2].Value == "+" ? number + offset : number - offset).ToString();
-            });
+            return keys;
         }
 
         private static List<string> GetPartyNames()
@@ -199,69 +148,84 @@ namespace JiMEOverlay
             return names;
         }
 
-        private static List<ReminderRule> GetRules()
+        private static bool IsBattleMap()
         {
-            if (_rules != null)
+            if (!SingletonBehaviour<GameController>.IsInitialized)
             {
-                return _rules;
+                return false;
             }
-            var rules = new List<ReminderRule>();
-            foreach (var entry in _ruleEntries)
+            var adventure = SingletonBehaviour<GameController>.Instance.CurrentAdventure;
+            return adventure != null && adventure.Type == AdventureTypes.Battleboard;
+        }
+
+        // Moves 0.5.x [Reminders] config rules into prompt-rules.json form and removes them from the .cfg.
+        // Unedited defaults become the current Aragorn rule; edited rules are converted as they are.
+        private static List<PromptRule> MigrateLegacyConfig(ConfigFile config)
+        {
+            var rules = new List<PromptRule>();
+            var hasCustom = false;
+            var enabled = true;
+
+            var enabledEntry = config.Bind("Reminders", "Enabled", true, "Moved to prompt-rules.json.");
+            enabled = enabledEntry.Value;
+            config.Remove(enabledEntry.Definition);
+
+            for (int i = 1; i <= LegacyRuleSlots; i++)
             {
-                var rule = ParseRule(entry.Value, entry.Definition.Key);
+                var entry = config.Bind("Reminders", $"Rule{i}", "", "Moved to prompt-rules.json.");
+                var raw = RestoreEscapes(entry.Value ?? "");
+                config.Remove(entry.Definition);
+                if (string.IsNullOrWhiteSpace(raw) || Array.IndexOf(LegacyDefaults, raw) >= 0)
+                {
+                    continue;
+                }
+                var rule = ParseLegacyRule(raw, i);
                 if (rule != null)
                 {
                     rules.Add(rule);
+                    hasCustom = true;
                 }
             }
-            _rules = rules;
+            config.Save();
+
+            if (!hasCustom)
+            {
+                rules.Add(PromptRules.DefaultAragornRule());
+            }
+            if (!enabled)
+            {
+                rules.ForEach(r => r.Enabled = false);
+            }
             return rules;
         }
 
-        // BepInEx unescapes config strings, so a single "\b" typed in the .cfg arrives as a backspace character.
-        // Turn such characters back into regex escapes so both "\b" and "\\b" mean a word boundary.
+        // BepInEx unescapes config strings, so a "\b" in the .cfg arrives as a backspace character. Turn it back.
         private static string RestoreEscapes(string pattern)
         {
-            return pattern.Replace("\b", @"\b").Replace("\t", @"\t").Replace("\n", @"\n").Replace("\r", @"\r")
-                .Replace("\f", @"\f").Replace("\v", @"\v").Replace("\a", @"\a").Replace("\0", @"\0");
+            return pattern.Replace("\b", @"\b").Replace("\t", @"\t").Replace("\f", @"\f").Replace("\v", @"\v").Replace("\a", @"\a").Replace("\0", @"\0");
         }
 
-        // "Hero|regex|text": hero is before the first |, text after the last |, so the regex may use alternation.
-        private static ReminderRule ParseRule(string raw, string name)
+        // "Hero|regex|text": hero before the first |, text after the last |, regex in between.
+        private static PromptRule ParseLegacyRule(string raw, int slot)
         {
-            if (string.IsNullOrWhiteSpace(raw))
-            {
-                return null;
-            }
             var first = raw.IndexOf('|');
             var last = raw.LastIndexOf('|');
             if (first < 0 || last == first)
             {
-                _log.LogWarning($"Reminders {name}: expected HeroName|regex|text, got \"{raw}\"");
+                _log.LogWarning($"Reminders Rule{slot}: not in HeroName|regex|text form, not migrated: \"{raw}\"");
                 return null;
             }
-            var hero = raw.Substring(0, first).Trim();
-            var pattern = RestoreEscapes(raw.Substring(first + 1, last - first - 1).Trim());
-            var text = raw.Substring(last + 1).Trim().Replace("\\n", "\n");
-            if (hero.Length == 0 || pattern.Length == 0 || text.Length == 0)
+            return new PromptRule
             {
-                _log.LogWarning($"Reminders {name}: hero, regex and text must all be set, got \"{raw}\"");
-                return null;
-            }
-            try
-            {
-                return new ReminderRule
+                Id = $"migrated-rule-{slot}",
+                Description = "Migrated from the [Reminders] config section.",
+                When = new PromptCondition
                 {
-                    HeroName = hero,
-                    Pattern = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant),
-                    Text = text,
-                };
-            }
-            catch (ArgumentException e)
-            {
-                _log.LogWarning($"Reminders {name}: invalid regex \"{pattern}\": {e.Message}");
-                return null;
-            }
+                    HeroesInParty = new List<string> { raw.Substring(0, first).Trim() },
+                    TextMatches = raw.Substring(first + 1, last - first - 1).Trim(),
+                },
+                Append = raw.Substring(last + 1).Trim(),
+            };
         }
     }
 }

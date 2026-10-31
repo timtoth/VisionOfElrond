@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using BepInEx;
 using BepInEx.Configuration;
 using FFG.JIME;
@@ -13,7 +14,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.5.1";
+        public const string PluginVersion = "0.6.0";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -53,7 +54,10 @@ namespace JiMEOverlay
             _backdrop.SetPixel(0, 0, new Color(0.06f, 0.06f, 0.06f, 1f));
             _backdrop.Apply();
 
-            PromptReminders.Init(Config, Logger, PluginGuid);
+            var dataDir = Path.Combine(Paths.ConfigPath, "JiMEOverlay");
+            Directory.CreateDirectory(dataDir);
+            PromptExport.Init(Logger, dataDir);
+            PromptReminders.Init(Config, Logger, PluginGuid, dataDir);
 
             _visible = _visibleOnStart.Value;
             _windowRect = new Rect(_windowX.Value, _windowY.Value, 300f, 120f);
@@ -76,6 +80,7 @@ namespace JiMEOverlay
             }
 
             UpdateInputBlocking();
+            PromptExport.Tick(Time.realtimeSinceStartup);
 
             // Fade toward solid while hovered, see-through otherwise.
             var targetOpacity = _blockingGameInput ? _hoverOpacity.Value : _idleOpacity.Value;
