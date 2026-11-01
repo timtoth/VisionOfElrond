@@ -31,6 +31,10 @@
     <Reference Include="UnityEngine.TextRenderingModule" HintPath="$(ManagedDir)\UnityEngine.TextRenderingModule.dll" Private="false" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="default-prompt-rules.json" LogicalName="JiMEOverlay.default-prompt-rules.json" />
+  </ItemGroup>
+
   <!-- Copy the built plugin straight into the game's BepInEx plugins folder. -->
   <Target Name="DeployToGame" AfterTargets="Build">
     <MakeDir Directories="$(GameDir)\BepInEx\plugins\JiMEOverlay" />

@@ -44,6 +44,7 @@ namespace JiMEOverlay
         public readonly List<int> ThreatThresholds = new List<int>();
         public readonly List<EnemyRow> Enemies = new List<EnemyRow>();
         public readonly List<HeroRow> Heroes = new List<HeroRow>();
+        public List<TokenRow> Tokens = new List<TokenRow>();
 
         public static GameSnapshot Capture()
         {
@@ -96,6 +97,8 @@ namespace JiMEOverlay
                     snap.Enemies.Add(ReadEnemy(group));
                 }
             }
+
+            snap.Tokens = TokenTracker.Capture(adventure, snap.AdventureKey);
 
             var gameData = SingletonBehaviour<GameData>.IsInitialized ? SingletonBehaviour<GameData>.Instance : null;
             var players = gameData != null ? gameData.Players : null;

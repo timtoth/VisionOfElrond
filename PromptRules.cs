@@ -37,6 +37,8 @@ namespace JiMEOverlay
     {
         [JsonProperty("_help")] public List<string> Help;
         [JsonProperty("enabled")] public bool Enabled = true;
+        // Which set of built-in rules this file has been offered; newer built-ins are added once, by id.
+        [JsonProperty("defaultsVersion")] public int DefaultsVersion;
         [JsonProperty("rules")] public List<PromptRule> Rules = new List<PromptRule>();
     }
 
@@ -62,14 +64,16 @@ namespace JiMEOverlay
             "when.battleMap: true for battle maps only, false for tile maps only.",
             "append / prepend: text added after / before the popup text, separated by a blank line. [b]bold[/b] and [i]italic[/i] work.",
             "Rules only ever add text; the game's own prompt text is always shown unchanged.",
-            "Placeholders: {1} inserts regex group 1 from textMatches, {1+1} adds 1 to it as a number, {hero} is the matched hero's name.",
+            "Placeholders: {1} inserts regex group 1 from textMatches, {1+1} adds 1 to it as a number, {hero} is the matched hero's name,",
+            "and {key:SOME_KEY} inserts the game's own text for that key from prompts.json (icons included).",
+            "Built-in rules you delete stay deleted; new built-ins from plugin updates are added once.",
         };
 
-        private const string DefaultAragornText = "Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1}).";
-        private const string DefaultAragornPattern = @"\breset\w* (?:your|their|his|her) decks?\b[\s\S]{0,80}?\bscouts? (\d+)";
+        private const string DefaultsResource = "JiMEOverlay.default-prompt-rules.json";
 
-        // "{1}" inserts regex group 1; "{1+1}" or "{1-2}" adds to it as a number; "{hero}" is the matched hero.
-        private static readonly Regex Placeholder = new Regex(@"\{(?:(\d+)(?:([+-])(\d+))?|hero)\}", RegexOptions.Compiled);
+        // "{1}" inserts regex group 1; "{1+1}" or "{1-2}" adds to it as a number; "{hero}" is the matched hero;
+        // "{key:NAME}" is the game's text for that localization key.
+        private static readonly Regex Placeholder = new Regex(@"\{(?:(\d+)(?:([+-])(\d+))?|(hero)|key:([A-Za-z0-9_]+))\}", RegexOptions.Compiled);
 
         private static ManualLogSource _log;
         private static string _path;
@@ -78,28 +82,72 @@ namespace JiMEOverlay
 
         public static string FilePath => _path;
 
-        public static void Init(ManualLogSource log, string dataDir, IEnumerable<PromptRule> migratedRules)
+        public static void Init(ManualLogSource log, string dataDir, List<PromptRule> migratedRules, bool migratedEnabled)
         {
             _log = log;
             _path = Path.Combine(dataDir, "prompt-rules.json");
-            if (!File.Exists(_path))
+            try
             {
-                WriteDefaultFile(migratedRules);
+                EnsureFile(migratedRules, migratedEnabled);
+            }
+            catch (Exception e)
+            {
+                log.LogWarning($"Could not create or update {_path}: {e.Message}");
             }
             ReloadIfChanged();
         }
 
-        public static PromptRule DefaultAragornRule() => new PromptRule
+        // Creates the rules file from the built-in defaults, or adds built-ins newer than the file has seen.
+        private static void EnsureFile(List<PromptRule> migratedRules, bool migratedEnabled)
         {
-            Id = "aragorn-rally-scout",
-            Description = "Aragorn: in the rally phase, heroes adjacent to him scout 1 more than the app says.",
-            When = new PromptCondition
+            var defaults = LoadDefaults();
+            if (!File.Exists(_path))
             {
-                HeroesInParty = new List<string> { "Aragorn" },
-                TextMatches = DefaultAragornPattern,
-            },
-            Append = DefaultAragornText,
-        };
+                var file = new PromptRuleFile { Help = HelpText, Enabled = migratedEnabled, DefaultsVersion = defaults.DefaultsVersion };
+                file.Rules.AddRange(defaults.Rules);
+                file.Rules.AddRange(migratedRules);
+                Save(file);
+                _log.LogInfo($"Created {_path} with {file.Rules.Count} rule(s).");
+                return;
+            }
+
+            var existing = JsonConvert.DeserializeObject<PromptRuleFile>(File.ReadAllText(_path)) ?? new PromptRuleFile();
+            if (existing.DefaultsVersion >= defaults.DefaultsVersion)
+            {
+                return;
+            }
+            existing.Rules = existing.Rules ?? new List<PromptRule>();
+            var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            existing.Rules.ForEach(r => { if (r?.Id != null) ids.Add(r.Id); });
+            var added = 0;
+            foreach (var rule in defaults.Rules)
+            {
+                if (rule.Id != null && ids.Add(rule.Id))
+                {
+                    existing.Rules.Add(rule);
+                    added++;
+                }
+            }
+            existing.Help = HelpText;
+            existing.DefaultsVersion = defaults.DefaultsVersion;
+            Save(existing);
+            _log.LogInfo($"Added {added} new built-in rule(s) to {_path}.");
+        }
+
+        private static PromptRuleFile LoadDefaults()
+        {
+            using (var stream = typeof(PromptRules).Assembly.GetManifestResourceStream(DefaultsResource))
+            using (var reader = new StreamReader(stream))
+            {
+                return JsonConvert.DeserializeObject<PromptRuleFile>(reader.ReadToEnd());
+            }
+        }
+
+        private static void Save(PromptRuleFile file)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(_path));
+            File.WriteAllText(_path, JsonConvert.SerializeObject(file, Formatting.Indented));
+        }
 
         // Returns the popup text with every matching rule applied, or the original text.
         public static string Apply(string text, PromptContext context)
@@ -185,9 +233,14 @@ namespace JiMEOverlay
         {
             return Placeholder.Replace(text, p =>
             {
-                if (!p.Groups[1].Success)
+                if (p.Groups[4].Success)
                 {
                     return hero ?? p.Value;
+                }
+                if (p.Groups[5].Success)
+                {
+                    var keyText = GameSnapshot.Localize(p.Groups[5].Value);
+                    return string.IsNullOrEmpty(keyText) || keyText == p.Groups[5].Value ? p.Value : keyText;
                 }
                 if (match == null)
                 {
@@ -285,17 +338,5 @@ namespace JiMEOverlay
             return rule.Enabled;
         }
 
-        private static void WriteDefaultFile(IEnumerable<PromptRule> migratedRules)
-        {
-            var file = new PromptRuleFile { Help = HelpText };
-            file.Rules.AddRange(migratedRules);
-            if (file.Rules.Count == 0)
-            {
-                file.Rules.Add(DefaultAragornRule());
-            }
-            Directory.CreateDirectory(Path.GetDirectoryName(_path));
-            File.WriteAllText(_path, JsonConvert.SerializeObject(file, Formatting.Indented));
-            _log.LogInfo($"Created {_path} with {file.Rules.Count} rule(s).");
-        }
     }
 }

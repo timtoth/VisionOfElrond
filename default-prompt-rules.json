@@ -1,0 +1,257 @@
+{
+  "defaultsVersion": 2,
+  "rules": [
+    {
+      "id": "aragorn-rally-scout",
+      "description": "Aragorn: in the rally phase, heroes adjacent to him scout 1 more than the app says.",
+      "enabled": true,
+      "when": {
+        "heroesInParty": [
+          "Aragorn"
+        ],
+        "textMatches": "\\breset\\w* (?:your|their|his|her) decks?\\b[\\s\\S]{0,80}?\\bscouts? (\\d+)"
+      },
+      "append": "Heroes adjacent to Aragorn: [b]Scout +1[/b] (scout {1+1})."
+    },
+    {
+      "id": "terrain-barrels",
+      "description": "When the app asks to place Barrels, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Barrel|Barrels)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_BARRELS}"
+    },
+    {
+      "id": "terrain-barricade",
+      "description": "When the app asks to place Barricades, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Barricade|Barricades)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_BARRICADE_REMINDER}"
+    },
+    {
+      "id": "terrain-bushes",
+      "description": "When the app asks to place Bushes, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Bush|Bushes)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_BUSHES}"
+    },
+    {
+      "id": "terrain-chest",
+      "description": "When the app asks to place Chests, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Chest|Chests)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_CHEST}"
+    },
+    {
+      "id": "terrain-elevation",
+      "description": "When the app asks to place Elevations, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Elevation|Elevations)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_ELEVATION}"
+    },
+    {
+      "id": "terrain-fence",
+      "description": "When the app asks to place Fences, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Fence|Fences)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_FENCE_REMINDER}"
+    },
+    {
+      "id": "terrain-fire",
+      "description": "When the app asks to place Fire Pits, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Fire\\ Pit|Fire\\ Pits)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_FIRE}"
+    },
+    {
+      "id": "terrain-fog",
+      "description": "When the app asks to place Mists, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Mist|Mists)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_FOG}"
+    },
+    {
+      "id": "terrain-fountain",
+      "description": "When the app asks to place Fountains, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Fountain|Fountains)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_FOUNTAIN_REMINDER}"
+    },
+    {
+      "id": "terrain-log",
+      "description": "When the app asks to place Logs, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Log|Logs)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_LOG}"
+    },
+    {
+      "id": "terrain-pits",
+      "description": "When the app asks to place Pits, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Pit|Pits)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_PITS}"
+    },
+    {
+      "id": "terrain-pond",
+      "description": "When the app asks to place Ponds, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Pond|Ponds)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_POND_REMINDER}"
+    },
+    {
+      "id": "terrain-rocks",
+      "description": "When the app asks to place Boulders, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Boulder|Boulders)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_ROCKS}"
+    },
+    {
+      "id": "terrain-rubble",
+      "description": "When the app asks to place Rubble, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Rubble)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_RUBBLE}"
+    },
+    {
+      "id": "terrain-statue",
+      "description": "When the app asks to place Statues, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Statue|Statues)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_STATUE}"
+    },
+    {
+      "id": "terrain-streams",
+      "description": "When the app asks to place Streams, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Stream|Streams)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_STREAMS}"
+    },
+    {
+      "id": "terrain-tables",
+      "description": "When the app asks to place Tables, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Table|Tables)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_TABLES}"
+    },
+    {
+      "id": "terrain-trench",
+      "description": "When the app asks to place Trenches, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Trench|Trenches)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_TRENCH_REMINDER}"
+    },
+    {
+      "id": "terrain-walls",
+      "description": "When the app asks to place Walls, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Wall|Walls)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_WALLS}"
+    },
+    {
+      "id": "terrain-web",
+      "description": "When the app asks to place Webs, remind what it does.",
+      "enabled": true,
+      "when": {
+        "keys": [
+          "UI_TERRAIN_NODES_REVEAL_FORMATTED"
+        ],
+        "textMatches": "(?m)^\\s*\\d+ (?:Web|Webs)\\s*$"
+      },
+      "append": "{key:TERRAIN_NODE_INFO_WEB}"
+    }
+  ]
+}

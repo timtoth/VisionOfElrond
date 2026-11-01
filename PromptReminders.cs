@@ -36,11 +36,12 @@ namespace JiMEOverlay
         public static void Init(ConfigFile config, ManualLogSource log, string harmonyId, string dataDir)
         {
             _log = log;
-            PromptRules.Init(log, dataDir, MigrateLegacyConfig(config));
+            var migrated = MigrateLegacyConfig(config, out var migratedEnabled);
+            PromptRules.Init(log, dataDir, migrated, migratedEnabled);
 
+            var harmony = new Harmony(harmonyId);
             try
             {
-                var harmony = new Harmony(harmonyId);
                 harmony.Patch(AccessTools.Method(typeof(MessagePopup), "InitializePopup"),
                     prefix: new HarmonyMethod(typeof(PromptReminders), nameof(InitializePopupPrefix)),
                     finalizer: new HarmonyMethod(typeof(PromptReminders), nameof(InitializePopupFinalizer)));
@@ -51,6 +52,7 @@ namespace JiMEOverlay
             {
                 log.LogWarning($"Prompt rules disabled; could not patch message popups: {e}");
             }
+            TokenTracker.Init(log, harmony);
         }
 
         private static void InitializePopupPrefix(MessagePopup __instance)
@@ -89,6 +91,7 @@ namespace JiMEOverlay
                     IsBattleMap = IsBattleMap(),
                 };
                 var original = label.text;
+                TokenTracker.OnPopupText(original);
                 var newText = PromptRules.Apply(original, context);
                 // Rules may only add text around the game's own; never show anything that alters the original wording.
                 if (newText == original)
@@ -167,12 +170,10 @@ namespace JiMEOverlay
         }
 
         // Moves 0.5.x [Reminders] config rules into prompt-rules.json form and removes them from the .cfg.
-        // Unedited defaults become the current Aragorn rule; edited rules are converted as they are.
-        private static List<PromptRule> MigrateLegacyConfig(ConfigFile config)
+        // Unedited defaults are dropped (the built-in Aragorn rule replaces them); edited rules are converted as they are.
+        private static List<PromptRule> MigrateLegacyConfig(ConfigFile config, out bool enabled)
         {
             var rules = new List<PromptRule>();
-            var hasCustom = false;
-            var enabled = true;
 
             var enabledEntry = config.Bind("Reminders", "Enabled", true, "Moved to prompt-rules.json.");
             enabled = enabledEntry.Value;
@@ -191,19 +192,9 @@ namespace JiMEOverlay
                 if (rule != null)
                 {
                     rules.Add(rule);
-                    hasCustom = true;
                 }
             }
             config.Save();
-
-            if (!hasCustom)
-            {
-                rules.Add(PromptRules.DefaultAragornRule());
-            }
-            if (!enabled)
-            {
-                rules.ForEach(r => r.Enabled = false);
-            }
             return rules;
         }
 

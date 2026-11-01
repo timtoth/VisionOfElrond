@@ -16,9 +16,15 @@ It only reads game state. It doesn't change game files, assets, or your saves.
 - Threat (current / max), darkness, and the thresholds of upcoming threat events
 - Heroes with their earned titles and role, e.g. "Aragorn, the Unfallen (Captain)", plus corruption,
   defeated status, last stand difficulty, and a last stand alert
-- Enemies in play: units remaining, HP, armor, sorcery, elite and exhausted status
+- Enemies in play: units remaining, HP, armor, sorcery, elite and exhausted status. The section
+  appears once the first enemy shows up, so adventures without enemies never show it
+- Discovered tokens (search, threat, explore, person): what each one showed the last time it was
+  clicked, with its options, or "not explored yet". **Find** moves the camera to the token. This
+  only covers tokens clicked during the current game session, and never reveals a token before
+  you've clicked it
 
-Clicks on the panel don't pass through to the game underneath.
+Clicks on the panel don't pass through to the game underneath. **A-** / **A+** at the bottom of the
+panel change the text size; the panel widens to match and remembers the size.
 
 ## Install
 
@@ -41,10 +47,14 @@ Clicks on the panel don't pass through to the game underneath.
 
 ## Prompt rules
 
-The plugin can add text before or after the game's message popups. For example, with Aragorn in the
-party, a rally phase popup that says "reset your deck and scout 2" gets this extra line: "Heroes
-adjacent to Aragorn: **Scout +1** (scout 3)." Only the text on screen changes; game rules and saves
-are not affected.
+The plugin can add text before or after the game's message popups. Built-in rules:
+
+- With Aragorn in the party, a rally phase popup that says "reset your deck and scout 2" gets this
+  extra line: "Heroes adjacent to Aragorn: **Scout +1** (scout 3)."
+- When the app asks you to place terrain, each listed terrain type gets the game's own rule text
+  for it underneath, e.g. what a bush or a boulder does.
+
+Only the text on screen changes; game rules and saves are not affected.
 
 Two files in `BepInEx\config\JiMEOverlay\` drive this:
 
@@ -83,8 +93,13 @@ Rules can only add text; there is no way to replace or remove the game's own wor
 refuses to show any result that doesn't contain the original prompt unchanged. `append` adds text
 after the popup text, `prepend` before it, separated by a blank line. `[b]bold[/b]`
 and `[i]italic[/i]` work. Placeholders: `{1}` inserts what `textMatches`' first `( )` group matched,
-`{1+1}` adds 1 to it as a number (`{1-1}` subtracts), and `{hero}` is the matched hero's name. Set
+`{1+1}` adds 1 to it as a number (`{1-1}` subtracts), `{hero}` is the matched hero's name, and
+`{key:SOME_KEY}` inserts the game's own text for a key from `prompts.json`, icons included. Set
 `"enabled": false` at the top of the file to turn all rules off.
+
+Built-in rules ship inside the plugin (`default-prompt-rules.json` in this repo). When an update adds
+new built-ins, they're added to your file once; a built-in you delete stays deleted, and your edits
+are kept.
 
 Rules from the 0.5.x `[Reminders]` config section are moved into `prompt-rules.json` automatically
 the first time 0.6 runs.

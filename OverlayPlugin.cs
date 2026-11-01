@@ -14,11 +14,15 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.6.0";
+        public const string PluginVersion = "0.7.0";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
         private const float FadeSpeed = 4f; // opacity change per second
+        private const int MinFontSize = 9;
+        private const int MaxFontSize = 28;
+        private const float BaseWidth = 300f; // panel width at the default font size
+        private const int DefaultFontSize = 13;
 
         private ConfigEntry<KeyboardShortcut> _toggleKey;
         private ConfigEntry<bool> _visibleOnStart;
@@ -27,6 +31,10 @@ namespace JiMEOverlay
         private ConfigEntry<string> _extraSetupItems;
         private ConfigEntry<float> _idleOpacity;
         private ConfigEntry<float> _hoverOpacity;
+        private ConfigEntry<int> _fontSize;
+
+        // Enemies only show once any have appeared in this adventure, so enemy-free adventures never show the section.
+        private string _enemiesSeenAdventure;
 
         private bool _visible;
         private bool _blockingGameInput;
@@ -49,6 +57,7 @@ namespace JiMEOverlay
             _extraSetupItems = Config.Bind("Setup", "ExtraItems", "", "Extra Round 0 checklist items, separated by |. Example: Set out dice|Deal damage and fear decks");
             _idleOpacity = Config.Bind("Window", "IdleOpacity", 0.6f, new ConfigDescription("Panel opacity when the mouse is elsewhere.", new AcceptableValueRange<float>(0.1f, 1f)));
             _hoverOpacity = Config.Bind("Window", "HoverOpacity", 1f, new ConfigDescription("Panel opacity while the mouse is over it.", new AcceptableValueRange<float>(0.1f, 1f)));
+            _fontSize = Config.Bind("Window", "FontSize", DefaultFontSize, new ConfigDescription("Panel text size; also adjustable with the A- / A+ buttons on the panel.", new AcceptableValueRange<int>(MinFontSize, MaxFontSize)));
 
             _backdrop = new Texture2D(1, 1);
             _backdrop.SetPixel(0, 0, new Color(0.06f, 0.06f, 0.06f, 1f));
@@ -115,6 +124,10 @@ namespace JiMEOverlay
                 if (_snapshot.InAdventure)
                 {
                     _setup.Sync(_snapshot, _extraSetupItems.Value);
+                    if (_snapshot.Enemies.Count > 0)
+                    {
+                        _enemiesSeenAdventure = _snapshot.AdventureKey;
+                    }
                 }
             }
             catch (Exception e)
@@ -142,7 +155,20 @@ namespace JiMEOverlay
             GUI.DrawTexture(_windowRect, _backdrop);
             GUI.color = new Color(1f, 1f, 1f, _opacity);
 
-            var newRect = GUILayout.Window(WindowId, _windowRect, DrawWindow, PluginName, GUILayout.Width(300f));
+            // Apply the panel's text size to the shared skin for this panel only, then restore it.
+            var skin = GUI.skin;
+            var oldSizes = new[] { skin.label.fontSize, skin.button.fontSize, skin.toggle.fontSize, skin.window.fontSize };
+            var size = Mathf.Clamp(_fontSize.Value, MinFontSize, MaxFontSize);
+            skin.label.fontSize = skin.button.fontSize = skin.toggle.fontSize = skin.window.fontSize = size;
+
+            // Height 0 lets the panel shrink back when content gets shorter.
+            var width = BaseWidth * size / DefaultFontSize;
+            var newRect = GUILayout.Window(WindowId, new Rect(_windowRect.x, _windowRect.y, width, 0f), DrawWindow, PluginName, GUILayout.Width(width));
+
+            skin.label.fontSize = oldSizes[0];
+            skin.button.fontSize = oldSizes[1];
+            skin.toggle.fontSize = oldSizes[2];
+            skin.window.fontSize = oldSizes[3];
             GUI.color = oldColor;
             if (newRect.position != _windowRect.position)
             {
@@ -168,7 +194,17 @@ namespace JiMEOverlay
             }
 
             GUILayout.Space(4f);
+            GUILayout.BeginHorizontal();
             GUILayout.Label($"{_toggleKey.Value} to hide · drag title to move");
+            if (GUILayout.Button("A-", GUILayout.ExpandWidth(false)))
+            {
+                _fontSize.Value = Mathf.Max(MinFontSize, _fontSize.Value - 1);
+            }
+            if (GUILayout.Button("A+", GUILayout.ExpandWidth(false)))
+            {
+                _fontSize.Value = Mathf.Min(MaxFontSize, _fontSize.Value + 1);
+            }
+            GUILayout.EndHorizontal();
             GUI.DragWindow();
         }
 
@@ -221,17 +257,47 @@ namespace JiMEOverlay
                 GUILayout.Label($"    Corruption {hero.Corruption} · Last stand difficulty {hero.LastStandDifficulty}");
             }
 
-            GUILayout.Space(4f);
-            GUILayout.Label($"<b>Enemies in play ({snap.Enemies.Count})</b>");
-            if (snap.Enemies.Count == 0)
+            if (_enemiesSeenAdventure == snap.AdventureKey)
             {
-                GUILayout.Label("  none");
+                GUILayout.Space(4f);
+                GUILayout.Label($"<b>Enemies in play ({snap.Enemies.Count})</b>");
+                if (snap.Enemies.Count == 0)
+                {
+                    GUILayout.Label("  None");
+                }
+                foreach (var enemy in snap.Enemies)
+                {
+                    var tags = (enemy.IsElite ? " [Elite]" : "") + (enemy.IsExhausted ? " [Exhausted]" : "");
+                    GUILayout.Label($"{enemy.Name} ×{enemy.UnitsRemaining}/{enemy.UnitStartCount}{tags}");
+                    GUILayout.Label($"    HP {enemy.Health}/{enemy.TotalHealth} · Armor {enemy.Armor} · Sorcery {enemy.Sorcery}");
+                }
             }
-            foreach (var enemy in snap.Enemies)
+
+            if (snap.Tokens.Count > 0)
             {
-                var tags = (enemy.IsElite ? " [Elite]" : "") + (enemy.IsExhausted ? " [Exhausted]" : "");
-                GUILayout.Label($"{enemy.Name} ×{enemy.UnitsRemaining}/{enemy.UnitStartCount}{tags}");
-                GUILayout.Label($"    HP {enemy.Health}/{enemy.TotalHealth} · Armor {enemy.Armor} · Sorcery {enemy.Sorcery}");
+                GUILayout.Space(4f);
+                GUILayout.Label($"<b>Discovered tokens ({snap.Tokens.Count})</b>");
+                foreach (var token in snap.Tokens)
+                {
+                    DrawToken(token);
+                }
+            }
+        }
+
+        private static void DrawToken(TokenRow token)
+        {
+            GUILayout.BeginHorizontal();
+            var summary = token.IsExplored && !string.IsNullOrEmpty(token.Summary) ? token.Summary : "<i>not explored yet</i>";
+            GUILayout.Label($"<b>{token.Type}:</b> {summary}");
+            // Camera only: centres the map on the token without interacting with it.
+            if (token.Node != null && GUILayout.Button("Find", GUILayout.ExpandWidth(false)))
+            {
+                SingletonBehaviour<GameController>.Instance.CurrentCamera.MoveCameraTo(token.Node.transform.position, 0.75f);
+            }
+            GUILayout.EndHorizontal();
+            if (token.Options.Count > 0)
+            {
+                GUILayout.Label($"    Options: {string.Join(" · ", token.Options)}");
             }
         }
 
