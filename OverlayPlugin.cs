@@ -14,7 +14,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.7.0";
+        public const string PluginVersion = "0.7.1";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -40,6 +40,7 @@ namespace JiMEOverlay
         private bool _blockingGameInput;
         private float _opacity = 1f;
         private Texture2D _backdrop;
+        private GUIStyle _windowStyle;
         private readonly SetupChecklist _setup = new SetupChecklist();
         private Rect _windowRect;
         private float _sessionStart;
@@ -155,20 +156,18 @@ namespace JiMEOverlay
             GUI.DrawTexture(_windowRect, _backdrop);
             GUI.color = new Color(1f, 1f, 1f, _opacity);
 
-            // Apply the panel's text size to the shared skin for this panel only, then restore it.
-            var skin = GUI.skin;
-            var oldSizes = new[] { skin.label.fontSize, skin.button.fontSize, skin.toggle.fontSize, skin.window.fontSize };
-            var size = Mathf.Clamp(_fontSize.Value, MinFontSize, MaxFontSize);
-            skin.label.fontSize = skin.button.fontSize = skin.toggle.fontSize = skin.window.fontSize = size;
+            // The window frame gets its own style so its title scales; the contents scale inside DrawWindow,
+            // because Unity runs window contents later in the frame, not during this call.
+            var size = CurrentFontSize;
+            if (_windowStyle == null)
+            {
+                _windowStyle = new GUIStyle(GUI.skin.window);
+            }
+            _windowStyle.fontSize = size;
 
             // Height 0 lets the panel shrink back when content gets shorter.
             var width = BaseWidth * size / DefaultFontSize;
-            var newRect = GUILayout.Window(WindowId, new Rect(_windowRect.x, _windowRect.y, width, 0f), DrawWindow, PluginName, GUILayout.Width(width));
-
-            skin.label.fontSize = oldSizes[0];
-            skin.button.fontSize = oldSizes[1];
-            skin.toggle.fontSize = oldSizes[2];
-            skin.window.fontSize = oldSizes[3];
+            var newRect = GUILayout.Window(WindowId, new Rect(_windowRect.x, _windowRect.y, width, 0f), DrawWindow, PluginName, _windowStyle, GUILayout.Width(width));
             GUI.color = oldColor;
             if (newRect.position != _windowRect.position)
             {
@@ -178,7 +177,28 @@ namespace JiMEOverlay
             _windowRect = newRect;
         }
 
+        private int CurrentFontSize => Mathf.Clamp(_fontSize.Value, MinFontSize, MaxFontSize);
+
         private void DrawWindow(int id)
+        {
+            // Apply the panel's text size to the shared skin while drawing this panel only, then restore it.
+            var skin = GUI.skin;
+            var oldSizes = new[] { skin.label.fontSize, skin.button.fontSize, skin.toggle.fontSize };
+            skin.label.fontSize = skin.button.fontSize = skin.toggle.fontSize = CurrentFontSize;
+            try
+            {
+                DrawContents();
+            }
+            finally
+            {
+                skin.label.fontSize = oldSizes[0];
+                skin.button.fontSize = oldSizes[1];
+                skin.toggle.fontSize = oldSizes[2];
+            }
+            GUI.DragWindow();
+        }
+
+        private void DrawContents()
         {
             var elapsed = TimeSpan.FromSeconds(Time.realtimeSinceStartup - _sessionStart);
             GUILayout.Label($"Session time: {(int)elapsed.TotalHours}:{elapsed.Minutes:00}:{elapsed.Seconds:00}");
@@ -205,7 +225,6 @@ namespace JiMEOverlay
                 _fontSize.Value = Mathf.Min(MaxFontSize, _fontSize.Value + 1);
             }
             GUILayout.EndHorizontal();
-            GUI.DragWindow();
         }
 
         private void DrawAdventure(GameSnapshot snap)
