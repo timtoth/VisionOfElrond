@@ -15,7 +15,7 @@ namespace JiMEOverlay
     {
         private const float CheckInterval = 5f;
 
-        private static readonly AccessTools.FieldRef<Dictionary<string, string[]>> DictionaryRef =
+        internal static readonly AccessTools.FieldRef<Dictionary<string, string[]>> DictionaryRef =
             AccessTools.StaticFieldRefAccess<Dictionary<string, string[]>>(AccessTools.Field(typeof(Localization), "mDictionary"));
         private static readonly AccessTools.FieldRef<int> LanguageIndexRef =
             AccessTools.StaticFieldRefAccess<int>(AccessTools.Field(typeof(Localization), "mLanguageIndex"));

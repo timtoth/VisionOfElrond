@@ -23,7 +23,13 @@ It only reads game state. It doesn't change game files, assets, or your saves.
   only covers tokens clicked during the current game session, and never reveals a token before
   you've clicked it
 
-**Hover tooltips** work even while the panel is hidden, in the panel's style and text size:
+**Hover tooltips** work even while the panel is hidden. They borrow the game's own popup frame, font
+and text colour at runtime (nothing is copied), and follow the panel's A-/A+ text size. Game icons
+draw as icons where the game's font has them and as words (e.g. "test **Wit**; 3") elsewhere. Set
+`[Tooltips] GameStyle = false` for the panel's plain style.
+
+- Hover a terrain piece (bush, boulder, fence...) to see the game's rule text for it and any
+  interaction it offers.
 
 - Hover a search, threat, explore or person token on the map to see the prompt and options it
   showed when last clicked. For tokens nobody has clicked yet, it previews the prompt and options a
@@ -57,12 +63,10 @@ panel change the text size; the panel widens to match and remembers the size.
 
 ## Prompt rules
 
-The plugin can add text before or after the game's message popups. Built-in rules:
-
-- With Aragorn in the party, a rally phase popup that says "reset your deck and scout 2" gets this
-  extra line: "Heroes adjacent to Aragorn: **Scout +1** (scout 3)."
-- When the app asks you to place terrain, each listed terrain type gets the game's own rule text
-  for it underneath, e.g. what a bush or a boulder does.
+The plugin can add text before or after the game's message popups. Built-in rule: with Aragorn in
+the party, a rally phase popup that says "reset your deck and scout 2" gets this extra line: "Heroes
+adjacent to Aragorn: **Scout +1** (scout 3)." (Terrain rule text used to be added to the terrain
+placement popup; it made those popups too long, so it moved to hover tooltips in 0.9.)
 
 Only the text on screen changes; game rules and saves are not affected.
 
@@ -109,7 +113,8 @@ and `[i]italic[/i]` work. Placeholders: `{1}` inserts what `textMatches`' first 
 
 Built-in rules ship inside the plugin (`default-prompt-rules.json` in this repo). When an update adds
 new built-ins, they're added to your file once; a built-in you delete stays deleted, and your edits
-are kept.
+are kept. An update can also retire built-ins (listed under `retiredRuleIds`), which removes them
+from your file once.
 
 Rules from the 0.5.x `[Reminders]` config section are moved into `prompt-rules.json` automatically
 the first time 0.6 runs.

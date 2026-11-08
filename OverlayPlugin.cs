@@ -14,7 +14,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.8.0";
+        public const string PluginVersion = "0.9.0";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -34,10 +34,13 @@ namespace JiMEOverlay
         private ConfigEntry<int> _fontSize;
         private ConfigEntry<bool> _tooltipsEnabled;
         private ConfigEntry<bool> _previewTokens;
+        private ConfigEntry<bool> _gameStyleTooltips;
 
         private const float TooltipBaseWidth = 280f; // tooltip width at the default font size
+        private const int GameStyleExtraFontSize = 4; // the game's serif font reads small at the panel's size
         private HoverTooltips _tooltips;
         private GUIStyle _tooltipStyle;
+        private GameStyle _gameStyle;
 
         // Enemies only show once any have appeared in this adventure, so enemy-free adventures never show the section.
         private string _enemiesSeenAdventure;
@@ -67,7 +70,9 @@ namespace JiMEOverlay
             _fontSize = Config.Bind("Window", "FontSize", DefaultFontSize, new ConfigDescription("Panel text size; also adjustable with the A- / A+ buttons on the panel.", new AcceptableValueRange<int>(MinFontSize, MaxFontSize)));
             _tooltipsEnabled = Config.Bind("Tooltips", "Enabled", true, "Show tooltips when hovering map tokens and enemies in the enemy bar, even while the panel is hidden.");
             _previewTokens = Config.Bind("Tooltips", "PreviewTokens", true, "For tokens nobody has clicked yet, show the prompt and options a click would show. Turn off to only show what you've already seen.");
+            _gameStyleTooltips = Config.Bind("Tooltips", "GameStyle", true, "Draw tooltips with the game's own popup frame, font and colours. Turn off for the overlay panel's style.");
             _tooltips = new HoverTooltips(Logger);
+            _gameStyle = new GameStyle(Logger);
 
             _backdrop = new Texture2D(1, 1);
             _backdrop.SetPixel(0, 0, new Color(0.06f, 0.06f, 0.06f, 1f));
@@ -199,7 +204,8 @@ namespace JiMEOverlay
 
         private int CurrentFontSize => Mathf.Clamp(_fontSize.Value, MinFontSize, MaxFontSize);
 
-        // Same look as the panel: dark backdrop, panel text size, next to the cursor and kept on screen.
+        // Drawn next to the cursor and kept on screen. By default it borrows the game's popup frame, font and
+        // colours (see GameStyle); otherwise, or if those can't be found, it uses the panel's dark backdrop.
         private void DrawTooltip()
         {
             var text = _tooltips.Text;
@@ -209,10 +215,19 @@ namespace JiMEOverlay
             }
             if (_tooltipStyle == null)
             {
-                _tooltipStyle = new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true, padding = new RectOffset(8, 8, 6, 6) };
+                _tooltipStyle = new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true };
             }
-            var size = CurrentFontSize;
+            var useGame = _gameStyleTooltips.Value && _gameStyle.TryLoad();
+            var size = CurrentFontSize + (useGame && _gameStyle.Font != null ? GameStyleExtraFontSize : 0);
             _tooltipStyle.fontSize = size;
+            _tooltipStyle.font = useGame ? _gameStyle.Font : null;
+            _tooltipStyle.normal.textColor = useGame ? _gameStyle.TextColor : GUI.skin.label.normal.textColor;
+            var framePadding = useGame && _gameStyle.HasFrame ? Mathf.RoundToInt(size * 0.9f) : 8;
+            _tooltipStyle.padding = new RectOffset(framePadding, framePadding, framePadding * 3 / 4, framePadding * 3 / 4);
+            _tooltipStyle.alignment = useGame ? TextAnchor.UpperCenter : TextAnchor.UpperLeft;
+
+            // Icons the font can draw stay icons; the rest become words.
+            text = GameText.NameIcons(text, useGame ? (Func<char, bool>)_gameStyle.CanDraw : null);
 
             var content = new GUIContent(text);
             var width = TooltipBaseWidth * size / DefaultFontSize;
@@ -227,8 +242,15 @@ namespace JiMEOverlay
             var rect = new Rect(Mathf.Max(4f, x), Mathf.Max(4f, y), width, height);
 
             var oldColor = GUI.color;
-            GUI.color = new Color(1f, 1f, 1f, 0.92f);
-            GUI.DrawTexture(rect, _backdrop);
+            if (useGame && _gameStyle.HasFrame)
+            {
+                _gameStyle.DrawFrame(rect, size / (float)DefaultFontSize * 0.5f);
+            }
+            else
+            {
+                GUI.color = new Color(1f, 1f, 1f, 0.92f);
+                GUI.DrawTexture(rect, _backdrop);
+            }
             GUI.color = oldColor;
             GUI.Label(rect, content, _tooltipStyle);
         }
@@ -360,7 +382,7 @@ namespace JiMEOverlay
         private static void DrawToken(TokenRow token)
         {
             GUILayout.BeginHorizontal();
-            var summary = token.IsExplored && !string.IsNullOrEmpty(token.Summary) ? token.Summary : "<i>not explored yet</i>";
+            var summary = token.IsExplored && !string.IsNullOrEmpty(token.Summary) ? GameText.NameIcons(token.Summary) : "<i>not explored yet</i>";
             GUILayout.Label($"<b>{token.Type}:</b> {summary}");
             // Camera only: centres the map on the token without interacting with it.
             if (token.Node != null && GUILayout.Button("Find", GUILayout.ExpandWidth(false)))
@@ -370,7 +392,7 @@ namespace JiMEOverlay
             GUILayout.EndHorizontal();
             if (token.Options.Count > 0)
             {
-                GUILayout.Label($"    Options: {string.Join(" · ", token.Options)}");
+                GUILayout.Label($"    Options: {GameText.NameIcons(string.Join(" · ", token.Options))}");
             }
         }
 

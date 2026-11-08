@@ -78,7 +78,8 @@ namespace JiMEOverlay
             for (int i = 0; i < count; i++)
             {
                 var node = _hits[i].transform.GetComponent<Node>() as GameNode;
-                if (node != null && node.IsVisible && TokenTracker.TokenTypeName(node) != null && _hits[i].distance < closestDistance)
+                var described = node != null && (TokenTracker.TokenTypeName(node) != null || IsTerrain(node));
+                if (described && node.IsVisible && _hits[i].distance < closestDistance)
                 {
                     closest = node;
                     closestDistance = _hits[i].distance;
@@ -87,11 +88,44 @@ namespace JiMEOverlay
             return closest;
         }
 
+        private static bool IsTerrain(GameNode node) => node.NodeType == GameNodeTypes.Terrain && node.TerrainModel != null;
+
+        // Terrain: the game's own rule text for it (what clicking it shows), plus any interaction it offers.
+        private string DescribeTerrain(GameNode node)
+        {
+            var nameKey = node.TerrainModel.NameKey ?? "";
+            var baseKey = nameKey.StartsWith("TERRAIN_NODE_") ? nameKey.Substring("TERRAIN_NODE_".Length) : nameKey;
+            var info = FirstLocalized($"TERRAIN_NODE_INFO_{baseKey}", $"{nameKey}_REMINDER");
+            var sb = new StringBuilder(info != null ? GameText.ToOverlay(info, nameIcons: false) : $"<b>{GameSnapshot.Localize(nameKey)}</b>");
+            if (TokenTracker.TryPreview(node, out _, out var options) && options != null && options.Count > 0)
+            {
+                sb.Append("\n<b>Options:</b> ").Append(string.Join(" · ", options));
+            }
+            return sb.ToString();
+        }
+
+        private static string FirstLocalized(params string[] keys)
+        {
+            foreach (var key in keys)
+            {
+                var text = GameSnapshot.Localize(key);
+                if (!string.IsNullOrEmpty(text) && text != key)
+                {
+                    return text;
+                }
+            }
+            return null;
+        }
+
         private string DescribeToken(GameNode node)
         {
             if (node == null)
             {
                 return null;
+            }
+            if (IsTerrain(node))
+            {
+                return DescribeTerrain(node);
             }
             var sb = new StringBuilder($"<b>{TokenTracker.TokenTypeName(node)}</b>");
             if (TokenTracker.TryGetRecord(node, out var summary, out var options))

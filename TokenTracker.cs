@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Text.RegularExpressions;
 using BepInEx.Logging;
 using FFG.Common;
 using FFG.JIME;
@@ -25,10 +24,6 @@ namespace JiMEOverlay
     {
         private const float ClickWindow = 5f; // seconds after a click in which the next popup belongs to that token
         private const int SummaryLength = 90;
-
-        private static readonly Regex MarkupTag = new Regex(@"\[/?[a-zA-Z0-9-]{0,8}\]", RegexOptions.Compiled);
-        // Game icons are private-use characters the overlay's font can't draw.
-        private static readonly Regex IconChars = new Regex(@"[-]", RegexOptions.Compiled);
 
         private class Record
         {
@@ -309,14 +304,8 @@ namespace JiMEOverlay
             return clean.Length > SummaryLength ? clean.Substring(0, SummaryLength - 1).TrimEnd() + "…" : clean;
         }
 
-        private static string Clean(string text)
-        {
-            if (string.IsNullOrEmpty(text))
-            {
-                return "";
-            }
-            return IconChars.Replace(MarkupTag.Replace(text, ""), "").Trim();
-        }
+        // Tags removed; icons kept so whoever displays the text can draw or name them (see GameText).
+        private static string Clean(string text) => GameText.StripTags(text).Trim();
 
         private static void LogOnce(Exception e)
         {

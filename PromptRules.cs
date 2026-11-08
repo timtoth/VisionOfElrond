@@ -39,6 +39,8 @@ namespace JiMEOverlay
         [JsonProperty("enabled")] public bool Enabled = true;
         // Which set of built-in rules this file has been offered; newer built-ins are added once, by id.
         [JsonProperty("defaultsVersion")] public int DefaultsVersion;
+        // Built-in rule ids (* wildcard) removed from users' files when they upgrade past this defaults version.
+        [JsonProperty("retiredRuleIds", NullValueHandling = NullValueHandling.Ignore)] public List<string> RetiredRuleIds;
         [JsonProperty("rules")] public List<PromptRule> Rules = new List<PromptRule>();
     }
 
@@ -66,7 +68,7 @@ namespace JiMEOverlay
             "Rules only ever add text; the game's own prompt text is always shown unchanged.",
             "Placeholders: {1} inserts regex group 1 from textMatches, {1+1} adds 1 to it as a number, {hero} is the matched hero's name,",
             "and {key:SOME_KEY} inserts the game's own text for that key from prompts.json (icons included).",
-            "Built-in rules you delete stay deleted; new built-ins from plugin updates are added once.",
+            "Built-in rules you delete stay deleted; new built-ins from plugin updates are added once, and retired built-ins removed once.",
         };
 
         private const string DefaultsResource = "JiMEOverlay.default-prompt-rules.json";
@@ -117,6 +119,15 @@ namespace JiMEOverlay
                 return;
             }
             existing.Rules = existing.Rules ?? new List<PromptRule>();
+            var removed = 0;
+            if (defaults.RetiredRuleIds != null)
+            {
+                foreach (var retired in defaults.RetiredRuleIds)
+                {
+                    var pattern = new Regex("^" + Regex.Escape(retired).Replace(@"\*", ".*") + "$", RegexOptions.IgnoreCase);
+                    removed += existing.Rules.RemoveAll(r => r?.Id != null && pattern.IsMatch(r.Id));
+                }
+            }
             var ids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             existing.Rules.ForEach(r => { if (r?.Id != null) ids.Add(r.Id); });
             var added = 0;
@@ -131,7 +142,7 @@ namespace JiMEOverlay
             existing.Help = HelpText;
             existing.DefaultsVersion = defaults.DefaultsVersion;
             Save(existing);
-            _log.LogInfo($"Added {added} new built-in rule(s) to {_path}.");
+            _log.LogInfo($"Updated built-in rules in {_path}: {added} added, {removed} retired.");
         }
 
         private static PromptRuleFile LoadDefaults()
