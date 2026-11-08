@@ -14,7 +14,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.9.0";
+        public const string PluginVersion = "0.9.1";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -38,6 +38,7 @@ namespace JiMEOverlay
 
         private const float TooltipBaseWidth = 280f; // tooltip width at the default font size
         private const int GameStyleExtraFontSize = 4; // the game's serif font reads small at the panel's size
+        private const float TooltipCursorGap = 20f; // space between the cursor and a tooltip with no anchor
         private HoverTooltips _tooltips;
         private GUIStyle _tooltipStyle;
         private GameStyle _gameStyle;
@@ -232,18 +233,24 @@ namespace JiMEOverlay
             var content = new GUIContent(text);
             var width = TooltipBaseWidth * size / DefaultFontSize;
             var height = _tooltipStyle.CalcHeight(content, width);
+
+            // Centred above the hovered enemy icon or token, or above the cursor; flipped below if there's no room.
             var mouse = Input.mousePosition;
-            var x = Mathf.Min(mouse.x + 18f, Screen.width - width - 4f);
-            var y = Screen.height - mouse.y + 18f;
-            if (y + height > Screen.height - 4f)
+            var anchor = _tooltips.Anchor ?? new Vector2(mouse.x, Screen.height - mouse.y - TooltipCursorGap);
+            var x = Mathf.Clamp(anchor.x - width / 2f, 4f, Mathf.Max(4f, Screen.width - width - 4f));
+            var y = anchor.y - height - 8f;
+            if (y < 4f)
             {
-                y = Screen.height - mouse.y - height - 8f;
+                y = Screen.height - mouse.y + TooltipCursorGap;
             }
-            var rect = new Rect(Mathf.Max(4f, x), Mathf.Max(4f, y), width, height);
+            var rect = new Rect(x, Mathf.Clamp(y, 4f, Mathf.Max(4f, Screen.height - height - 4f)), width, height);
 
             var oldColor = GUI.color;
             if (useGame && _gameStyle.HasFrame)
             {
+                GUI.color = GameStyle.FillColor;
+                GUI.DrawTexture(rect, _backdrop);
+                GUI.color = oldColor;
                 _gameStyle.DrawFrame(rect, size / (float)DefaultFontSize * 0.5f);
             }
             else

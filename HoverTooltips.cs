@@ -8,19 +8,26 @@ using UnityEngine;
 
 namespace JiMEOverlay
 {
-    // Finds what the mouse is over (a map token or an enemy in the enemy bar) and builds tooltip text for it.
+    // Finds what the mouse is over (a map token or terrain piece, or an enemy in the enemy bar) and builds
+    // tooltip text for it, plus a screen point to anchor the tooltip to (the enemy icon or the token).
     // Read-only: uses the same raycast as the game's click handling, but never clicks anything.
     public class HoverTooltips
     {
-        private const float RayLength = 50f;  // matches FFG.Common.InputController
+        private const float RayLength = 50f;   // matches FFG.Common.InputController
         private const int NodeLayerMask = 256; // matches FFG.Common.InputController
+        private const float TokenAnchorLift = 28f; // pixels above a token's centre, so the tooltip clears the token
+        private const int MaxDiagnostics = 10;
 
         private readonly ManualLogSource _log;
-        private readonly RaycastHit[] _hits = new RaycastHit[4];
+        private readonly RaycastHit[] _hits = new RaycastHit[8];
+        private readonly HashSet<string> _diagnosed = new HashSet<string>();
         private string _lastError;
 
         public bool PreviewTokens = true;
         public string Text { get; private set; }
+        // Where the tooltip should sit, in GUI coordinates (top-left origin): it is drawn centred above this point.
+        // Null means "above the cursor".
+        public Vector2? Anchor { get; private set; }
 
         public HoverTooltips(ManualLogSource log)
         {
@@ -30,23 +37,44 @@ namespace JiMEOverlay
         public void Clear()
         {
             Text = null;
+            Anchor = null;
         }
 
         public void Update()
         {
-            Text = null;
+            Clear();
             try
             {
                 if (!SingletonBehaviour<GameController>.IsInitialized || SingletonBehaviour<GameController>.Instance.CurrentAdventure == null)
                 {
                     return;
                 }
-                if (UICamera.isOverUI)
+
+                var hovered = UICamera.hoveredObject;
+                var view = hovered != null ? hovered.GetComponentInParent<EnemyMiniView>() : null;
+                if (view != null)
                 {
-                    Text = DescribeEnemy(HoveredEnemy());
+                    Text = DescribeEnemy(view.Model);
+                    Anchor = WidgetTop(view);
                     return;
                 }
-                Text = DescribeToken(HoveredToken());
+
+                // Over some other piece of the game's UI: no map tooltip through it.
+                if (hovered != null && hovered.GetComponentInParent<UIWidget>() != null)
+                {
+                    if (_diagnosed.Count < MaxDiagnostics && _diagnosed.Add($"ui|{hovered.name}"))
+                    {
+                        _log.LogInfo($"Hover diagnostic: mouse is over game UI '{hovered.name}', so no map tooltip.");
+                    }
+                    return;
+                }
+
+                var node = HoveredToken(out var camera);
+                if (node != null)
+                {
+                    Text = DescribeToken(node);
+                    Anchor = WorldPoint(camera, node.transform.position, TokenAnchorLift);
+                }
             }
             catch (Exception e)
             {
@@ -58,34 +86,85 @@ namespace JiMEOverlay
             }
         }
 
-        private static EnemyGroup HoveredEnemy()
+        // Top centre of the enemy icon on screen.
+        private static Vector2? WidgetTop(EnemyMiniView view)
         {
-            var hovered = UICamera.hoveredObject;
-            var view = hovered != null ? hovered.GetComponentInParent<EnemyMiniView>() : null;
-            return view != null ? view.Model : null;
-        }
-
-        private GameNode HoveredToken()
-        {
-            var camera = SingletonBehaviour<GameController>.Instance.CurrentCamera;
-            if (camera == null || camera.Camera == null)
+            var widget = view.GetComponent<UIWidget>() ?? view.GetComponentInChildren<UIWidget>();
+            var camera = NGUITools.FindCameraForLayer(view.gameObject.layer);
+            if (widget == null || camera == null)
             {
                 return null;
             }
-            var count = Physics.RaycastNonAlloc(camera.Camera.ScreenPointToRay(Input.mousePosition), _hits, RayLength, NodeLayerMask);
+            var corners = widget.worldCorners;
+            float top = float.MinValue, left = float.MaxValue, right = float.MinValue;
+            foreach (var corner in corners)
+            {
+                var p = camera.WorldToScreenPoint(corner);
+                top = Mathf.Max(top, p.y);
+                left = Mathf.Min(left, p.x);
+                right = Mathf.Max(right, p.x);
+            }
+            return new Vector2((left + right) / 2f, Screen.height - top);
+        }
+
+        private static Vector2? WorldPoint(Camera camera, Vector3 world, float lift)
+        {
+            if (camera == null)
+            {
+                return null;
+            }
+            var p = camera.WorldToScreenPoint(world);
+            if (p.z <= 0f)
+            {
+                return null; // behind the camera
+            }
+            return new Vector2(p.x, Screen.height - p.y - lift);
+        }
+
+        private GameNode HoveredToken(out Camera camera)
+        {
+            camera = null;
+            var controller = SingletonBehaviour<GameController>.Instance.CurrentCamera;
+            if (controller == null || controller.Camera == null)
+            {
+                return null;
+            }
+            camera = controller.Camera;
+            var ray = camera.ScreenPointToRay(Input.mousePosition);
+            var count = Physics.RaycastNonAlloc(ray, _hits, RayLength, NodeLayerMask);
             GameNode closest = null;
             var closestDistance = float.MaxValue;
             for (int i = 0; i < count; i++)
             {
-                var node = _hits[i].transform.GetComponent<Node>() as GameNode;
-                var described = node != null && (TokenTracker.TokenTypeName(node) != null || IsTerrain(node));
-                if (described && node.IsVisible && _hits[i].distance < closestDistance)
+                var node = _hits[i].transform.GetComponentInParent<GameNode>();
+                if (node == null || (TokenTracker.TokenTypeName(node) == null && !IsTerrain(node)) || !node.IsVisible)
+                {
+                    Diagnose(_hits[i], node);
+                    continue;
+                }
+                if (_hits[i].distance < closestDistance)
                 {
                     closest = node;
                     closestDistance = _hits[i].distance;
                 }
             }
             return closest;
+        }
+
+        // Logs (a few times per session) what the hover raycast hit when it didn't find a usable token,
+        // so a token that never gets a tooltip can be traced from BepInEx\LogOutput.log.
+        private void Diagnose(RaycastHit hit, GameNode node)
+        {
+            if (_diagnosed.Count >= MaxDiagnostics)
+            {
+                return;
+            }
+            var name = hit.transform.name;
+            var reason = node == null ? "no GameNode" : $"type {node.Token3DType}, node {node.NodeType}, visible {node.IsVisible}";
+            if (_diagnosed.Add($"{name}|{reason}"))
+            {
+                _log.LogInfo($"Hover diagnostic: hit '{name}' (layer {hit.transform.gameObject.layer}) but no tooltip: {reason}.");
+            }
         }
 
         private static bool IsTerrain(GameNode node) => node.NodeType == GameNodeTypes.Terrain && node.TerrainModel != null;
@@ -119,10 +198,6 @@ namespace JiMEOverlay
 
         private string DescribeToken(GameNode node)
         {
-            if (node == null)
-            {
-                return null;
-            }
             if (IsTerrain(node))
             {
                 return DescribeTerrain(node);

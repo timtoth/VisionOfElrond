@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using BepInEx.Logging;
 using FFG.Common;
 using FFG.JIME;
@@ -58,8 +59,14 @@ namespace JiMEOverlay
                 var label = TextLabelRef(popup);
                 if (label != null)
                 {
-                    Font = label.trueTypeFont != null ? label.trueTypeFont : label.font != null ? label.font.dynamicFont : null;
-                    TextColor = label.color;
+                    Font = DrawableFont(label);
+                    TextColor = new Color(label.color.r, label.color.g, label.color.b, 1f);
+                }
+                // The popup itself uses a bitmap font the overlay can't draw with; use the drawable font
+                // the game's labels use most instead.
+                if (Font == null)
+                {
+                    Font = MostUsedDrawableFont(SingletonBehaviour<UI_Game>.Instance.gameObject);
                 }
 
                 var background = BackgroundRef(popup);
@@ -83,6 +90,42 @@ namespace JiMEOverlay
             }
             return _loaded;
         }
+
+        private static Font DrawableFont(UILabel label)
+        {
+            if (label.trueTypeFont != null)
+            {
+                return label.trueTypeFont;
+            }
+            return label.font != null ? label.font.dynamicFont : null;
+        }
+
+        private static Font MostUsedDrawableFont(GameObject root)
+        {
+            var counts = new Dictionary<Font, int>();
+            foreach (var label in root.GetComponentsInChildren<UILabel>(true))
+            {
+                var font = DrawableFont(label);
+                if (font != null)
+                {
+                    counts[font] = counts.TryGetValue(font, out var n) ? n + 1 : 1;
+                }
+            }
+            Font best = null;
+            var bestCount = 0;
+            foreach (var pair in counts)
+            {
+                if (pair.Value > bestCount)
+                {
+                    best = pair.Key;
+                    bestCount = pair.Value;
+                }
+            }
+            return best;
+        }
+
+        // Dark fill drawn inside the frame: the game's frame sprite has a transparent middle.
+        public static readonly Color FillColor = new Color(0.04f, 0.035f, 0.03f, 0.94f);
 
         // Whether the borrowed font can draw this character (the game's icons are private-use characters).
         public bool CanDraw(char c) => Font != null && Font.HasCharacter(c);
