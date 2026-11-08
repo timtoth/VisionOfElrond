@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using BepInEx;
 using BepInEx.Configuration;
@@ -14,7 +15,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.9.1";
+        public const string PluginVersion = "0.9.2";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -39,6 +40,8 @@ namespace JiMEOverlay
         private const float TooltipBaseWidth = 280f; // tooltip width at the default font size
         private const int GameStyleExtraFontSize = 4; // the game's serif font reads small at the panel's size
         private const float TooltipCursorGap = 20f; // space between the cursor and a tooltip with no anchor
+        private const int MaxTooltipPositionLogs = 12; // distinct hovered things logged per session
+        private readonly HashSet<string> _loggedTooltipPositions = new HashSet<string>();
         private HoverTooltips _tooltips;
         private GUIStyle _tooltipStyle;
         private GameStyle _gameStyle;
@@ -244,6 +247,7 @@ namespace JiMEOverlay
                 y = Screen.height - mouse.y + TooltipCursorGap;
             }
             var rect = new Rect(x, Mathf.Clamp(y, 4f, Mathf.Max(4f, Screen.height - height - 4f)), width, height);
+            LogTooltipPosition(rect, anchor);
 
             var oldColor = GUI.color;
             if (useGame && _gameStyle.HasFrame)
@@ -260,6 +264,20 @@ namespace JiMEOverlay
             }
             GUI.color = oldColor;
             GUI.Label(rect, content, _tooltipStyle);
+        }
+
+        // Logs where the first few distinct hovered things are and where their tooltip ended up, so positioning
+        // can be checked from BepInEx\LogOutput.log. GUI coordinates measure from the top-left of the screen.
+        private void LogTooltipPosition(Rect rect, Vector2 anchor)
+        {
+            var key = _tooltips.TargetKey;
+            if (key == null || _loggedTooltipPositions.Count >= MaxTooltipPositionLogs || !_loggedTooltipPositions.Add(key))
+            {
+                return;
+            }
+            var source = _tooltips.Anchor.HasValue ? "anchored" : "above cursor";
+            Logger.LogInfo($"Hover position: {_tooltips.PositionInfo} -> {source} at ({anchor.x:0}, {anchor.y:0})"
+                + $" -> tooltip at ({rect.x:0}, {rect.y:0}, {rect.width:0}x{rect.height:0}) on a {Screen.width}x{Screen.height} screen");
         }
 
         private void DrawWindow(int id)

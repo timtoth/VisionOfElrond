@@ -28,6 +28,9 @@ namespace JiMEOverlay
         // Where the tooltip should sit, in GUI coordinates (top-left origin): it is drawn centred above this point.
         // Null means "above the cursor".
         public Vector2? Anchor { get; private set; }
+        // Identifies the hovered thing, and describes where it is, for the position diagnostics the panel logs.
+        public string TargetKey { get; private set; }
+        public string PositionInfo { get; private set; }
 
         public HoverTooltips(ManualLogSource log)
         {
@@ -38,6 +41,8 @@ namespace JiMEOverlay
         {
             Text = null;
             Anchor = null;
+            TargetKey = null;
+            PositionInfo = null;
         }
 
         public void Update()
@@ -55,7 +60,9 @@ namespace JiMEOverlay
                 if (view != null)
                 {
                     Text = DescribeEnemy(view.Model);
-                    Anchor = WidgetTop(view);
+                    Anchor = WidgetTop(view, out var box);
+                    TargetKey = $"enemy:{view.GetInstanceID()}";
+                    PositionInfo = $"enemy '{(view.Model != null ? view.Model.GetEnemyName(null, false, false) : view.name)}' icon screen box {box}";
                     return;
                 }
 
@@ -73,7 +80,13 @@ namespace JiMEOverlay
                 if (node != null)
                 {
                     Text = DescribeToken(node);
-                    Anchor = WorldPoint(camera, node.transform.position, TokenAnchorLift);
+                    var world = node.transform.position;
+                    Anchor = WorldPoint(camera, world, TokenAnchorLift);
+                    var screen = camera.WorldToScreenPoint(world);
+                    var kind = IsTerrain(node) ? $"terrain {GameSnapshot.Localize(node.TerrainModel.NameKey)}" : $"{TokenTracker.TokenTypeName(node)} token";
+                    TargetKey = $"node:{node.GetInstanceID()}";
+                    PositionInfo = $"{kind} '{node.name}' at world ({world.x:0.00}, {world.y:0.00}, {world.z:0.00})"
+                        + $" -> screen ({screen.x:0}, {screen.y:0}, depth {screen.z:0.0}) via camera '{camera.name}'";
                 }
             }
             catch (Exception e)
@@ -86,24 +99,28 @@ namespace JiMEOverlay
             }
         }
 
-        // Top centre of the enemy icon on screen.
-        private static Vector2? WidgetTop(EnemyMiniView view)
+        // Top centre of the enemy icon on screen; box describes the icon's screen rectangle for diagnostics.
+        private static Vector2? WidgetTop(EnemyMiniView view, out string box)
         {
+            box = "(unknown)";
             var widget = view.GetComponent<UIWidget>() ?? view.GetComponentInChildren<UIWidget>();
             var camera = NGUITools.FindCameraForLayer(view.gameObject.layer);
             if (widget == null || camera == null)
             {
+                box = widget == null ? "(no widget)" : "(no UI camera)";
                 return null;
             }
             var corners = widget.worldCorners;
-            float top = float.MinValue, left = float.MaxValue, right = float.MinValue;
+            float top = float.MinValue, bottom = float.MaxValue, left = float.MaxValue, right = float.MinValue;
             foreach (var corner in corners)
             {
                 var p = camera.WorldToScreenPoint(corner);
                 top = Mathf.Max(top, p.y);
+                bottom = Mathf.Min(bottom, p.y);
                 left = Mathf.Min(left, p.x);
                 right = Mathf.Max(right, p.x);
             }
+            box = $"x {left:0}-{right:0}, y {bottom:0}-{top:0} (from bottom) via camera '{camera.name}'";
             return new Vector2((left + right) / 2f, Screen.height - top);
         }
 
