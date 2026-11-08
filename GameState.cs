@@ -145,7 +145,7 @@ namespace JiMEOverlay
             return row;
         }
 
-        private static EnemyRow ReadEnemy(EnemyGroup group)
+        internal static EnemyRow ReadEnemy(EnemyGroup group)
         {
             var row = new EnemyRow
             {

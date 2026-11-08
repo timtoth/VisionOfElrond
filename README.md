@@ -23,6 +23,16 @@ It only reads game state. It doesn't change game files, assets, or your saves.
   only covers tokens clicked during the current game session, and never reveals a token before
   you've clicked it
 
+**Hover tooltips** work even while the panel is hidden, in the panel's style and text size:
+
+- Hover a search, threat, explore or person token on the map to see the prompt and options it
+  showed when last clicked. For tokens nobody has clicked yet, it previews the prompt and options a
+  click would show (only that first prompt, never outcomes). Set `[Tooltips] PreviewTokens = false`
+  to only see what you've already clicked.
+- Hover an enemy in the enemy bar at the bottom of the screen to see its units, HP, armor, sorcery
+  and status.
+- Turn tooltips off with `[Tooltips] Enabled = false`.
+
 Clicks on the panel don't pass through to the game underneath. **A-** / **A+** at the bottom of the
 panel change the text size; the panel widens to match and remembers the size.
 

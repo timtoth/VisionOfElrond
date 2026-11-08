@@ -14,7 +14,7 @@ namespace JiMEOverlay
     {
         public const string PluginGuid = "com.timto.jimeoverlay";
         public const string PluginName = "JiME Overlay";
-        public const string PluginVersion = "0.7.1";
+        public const string PluginVersion = "0.8.0";
 
         private const int WindowId = 0x4A694D45; // "JiME"
         private const float RefreshInterval = 0.5f;
@@ -32,6 +32,12 @@ namespace JiMEOverlay
         private ConfigEntry<float> _idleOpacity;
         private ConfigEntry<float> _hoverOpacity;
         private ConfigEntry<int> _fontSize;
+        private ConfigEntry<bool> _tooltipsEnabled;
+        private ConfigEntry<bool> _previewTokens;
+
+        private const float TooltipBaseWidth = 280f; // tooltip width at the default font size
+        private HoverTooltips _tooltips;
+        private GUIStyle _tooltipStyle;
 
         // Enemies only show once any have appeared in this adventure, so enemy-free adventures never show the section.
         private string _enemiesSeenAdventure;
@@ -59,6 +65,9 @@ namespace JiMEOverlay
             _idleOpacity = Config.Bind("Window", "IdleOpacity", 0.6f, new ConfigDescription("Panel opacity when the mouse is elsewhere.", new AcceptableValueRange<float>(0.1f, 1f)));
             _hoverOpacity = Config.Bind("Window", "HoverOpacity", 1f, new ConfigDescription("Panel opacity while the mouse is over it.", new AcceptableValueRange<float>(0.1f, 1f)));
             _fontSize = Config.Bind("Window", "FontSize", DefaultFontSize, new ConfigDescription("Panel text size; also adjustable with the A- / A+ buttons on the panel.", new AcceptableValueRange<int>(MinFontSize, MaxFontSize)));
+            _tooltipsEnabled = Config.Bind("Tooltips", "Enabled", true, "Show tooltips when hovering map tokens and enemies in the enemy bar, even while the panel is hidden.");
+            _previewTokens = Config.Bind("Tooltips", "PreviewTokens", true, "For tokens nobody has clicked yet, show the prompt and options a click would show. Turn off to only show what you've already seen.");
+            _tooltips = new HoverTooltips(Logger);
 
             _backdrop = new Texture2D(1, 1);
             _backdrop.SetPixel(0, 0, new Color(0.06f, 0.06f, 0.06f, 1f));
@@ -91,6 +100,16 @@ namespace JiMEOverlay
 
             UpdateInputBlocking();
             PromptExport.Tick(Time.realtimeSinceStartup);
+
+            if (_tooltipsEnabled.Value && !_blockingGameInput)
+            {
+                _tooltips.PreviewTokens = _previewTokens.Value;
+                _tooltips.Update();
+            }
+            else
+            {
+                _tooltips.Clear();
+            }
 
             // Fade toward solid while hovered, see-through otherwise.
             var targetOpacity = _blockingGameInput ? _hoverOpacity.Value : _idleOpacity.Value;
@@ -145,6 +164,7 @@ namespace JiMEOverlay
 
         private void OnGUI()
         {
+            DrawTooltip();
             if (!_visible)
             {
                 return;
@@ -178,6 +198,40 @@ namespace JiMEOverlay
         }
 
         private int CurrentFontSize => Mathf.Clamp(_fontSize.Value, MinFontSize, MaxFontSize);
+
+        // Same look as the panel: dark backdrop, panel text size, next to the cursor and kept on screen.
+        private void DrawTooltip()
+        {
+            var text = _tooltips.Text;
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+            if (_tooltipStyle == null)
+            {
+                _tooltipStyle = new GUIStyle(GUI.skin.label) { richText = true, wordWrap = true, padding = new RectOffset(8, 8, 6, 6) };
+            }
+            var size = CurrentFontSize;
+            _tooltipStyle.fontSize = size;
+
+            var content = new GUIContent(text);
+            var width = TooltipBaseWidth * size / DefaultFontSize;
+            var height = _tooltipStyle.CalcHeight(content, width);
+            var mouse = Input.mousePosition;
+            var x = Mathf.Min(mouse.x + 18f, Screen.width - width - 4f);
+            var y = Screen.height - mouse.y + 18f;
+            if (y + height > Screen.height - 4f)
+            {
+                y = Screen.height - mouse.y - height - 8f;
+            }
+            var rect = new Rect(Mathf.Max(4f, x), Mathf.Max(4f, y), width, height);
+
+            var oldColor = GUI.color;
+            GUI.color = new Color(1f, 1f, 1f, 0.92f);
+            GUI.DrawTexture(rect, _backdrop);
+            GUI.color = oldColor;
+            GUI.Label(rect, content, _tooltipStyle);
+        }
 
         private void DrawWindow(int id)
         {

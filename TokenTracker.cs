@@ -124,6 +124,7 @@ namespace JiMEOverlay
             {
                 _adventureKey = adventureKey;
                 _records.Clear();
+                _previewCache.Clear();
             }
 
             var rows = new List<TokenRow>();
@@ -152,6 +153,117 @@ namespace JiMEOverlay
                 rows.Add(row);
             }
             return rows;
+        }
+
+        // What the token showed the last time it was clicked this session, if it has been.
+        public static bool TryGetRecord(GameNode node, out string summary, out List<string> options)
+        {
+            summary = null;
+            options = null;
+            if (node == null || !_records.TryGetValue(node.GetInstanceID(), out var record))
+            {
+                return false;
+            }
+            summary = record.Summary;
+            options = record.Options;
+            return true;
+        }
+
+        public static string TokenTypeName(GameNode node) => node != null ? TypeName(node.Token3DType) : null;
+
+        private const int PreviewDepth = 4; // states to follow after the click before giving up
+
+        // The first prompt and choices a click on this token would show, read from its script without running it.
+        // Cached per token and script state, so hovering doesn't re-walk the script every frame.
+        public static bool TryPreview(GameNode node, out string summary, out List<string> options)
+        {
+            summary = null;
+            options = null;
+            try
+            {
+                var fsm = node != null && node.Fsm != null ? node.Fsm.Fsm : null;
+                var state = fsm != null ? fsm.ActiveState : null;
+                if (state == null)
+                {
+                    return false;
+                }
+                var cacheKey = $"{node.GetInstanceID()}:{state.Name}";
+                if (_previewCache.TryGetValue(cacheKey, out var cached))
+                {
+                    summary = cached?.Summary;
+                    options = cached?.Options;
+                    return cached != null;
+                }
+
+                Record found = null;
+                var next = FindTransition(state, "NODE CLICKED");
+                for (int depth = 0; depth < PreviewDepth && next != null && found == null; depth++)
+                {
+                    var target = fsm.GetState(next);
+                    if (target == null)
+                    {
+                        break;
+                    }
+                    found = ReadMessage(target);
+                    next = found == null ? FindTransition(target, "FINISHED") : null;
+                }
+                _previewCache[cacheKey] = found;
+                summary = found?.Summary;
+                options = found?.Options;
+                return found != null;
+            }
+            catch (Exception e)
+            {
+                LogOnce(e);
+                return false;
+            }
+        }
+
+        private static readonly Dictionary<string, Record> _previewCache = new Dictionary<string, Record>();
+
+        private static string FindTransition(HutongGames.PlayMaker.FsmState state, string eventName)
+        {
+            if (state.Transitions == null)
+            {
+                return null;
+            }
+            foreach (var transition in state.Transitions)
+            {
+                if (transition != null && transition.EventName == eventName)
+                {
+                    return transition.ToState;
+                }
+            }
+            return null;
+        }
+
+        private static Record ReadMessage(HutongGames.PlayMaker.FsmState state)
+        {
+            if (state.Actions == null)
+            {
+                return null;
+            }
+            foreach (var action in state.Actions)
+            {
+                if (!(action is FFG.JIME.Actions.DisplayMessageBase message) || message.Message == null || string.IsNullOrEmpty(message.Message.Key))
+                {
+                    continue;
+                }
+                var record = new Record { Summary = Summarize(GameSnapshot.Localize(message.Message.Key)) };
+                if (action is FFG.JIME.Actions.DisplayMessageMultipleChoice choice && choice.Choices != null)
+                {
+                    foreach (var item in choice.Choices)
+                    {
+                        var label = item != null ? ResolvePacket(item.Localization) : null;
+                        if (!string.IsNullOrEmpty(label))
+                        {
+                            record.Options.Add(label);
+                        }
+                    }
+                }
+                return record;
+            }
+            return null;
         }
 
         private static bool IsClickPending()
